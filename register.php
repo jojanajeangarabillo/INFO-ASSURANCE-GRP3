@@ -1,5 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+<style>
+  .circle-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: white; /* 👈 THIS is the white inside */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  border: 4px solid white;
+}
+
+.circle-logo img {
+  width: 70%; /* 👈 makes logo smaller inside circle */
+  height: auto;
+  object-fit: contain;
+}
+</style>
 <head>
 <meta charset="UTF-8">
 <title>Signup</title>
@@ -34,7 +54,7 @@ tailwind.config = {
     <!-- HEADER -->
     <div class="text-center mb-8">
       <div class="w-24 h-24 rounded-full overflow-hidden mx-auto mb-6 shadow-lg border-4 border-white">
-         <img src="logo.jpg" alt="Logo" class="w-full h-full object-cover">
+         <img src="JERS-LOGO.png" alt="Logo" class="w-full h-full object-cover">
       </div>
 
       <h1 class="text-3xl font-bold text-brand-900 mb-2">

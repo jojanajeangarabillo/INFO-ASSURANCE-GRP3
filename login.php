@@ -35,7 +35,7 @@ tailwind.config = {
     <!-- Header -->
     <div class="text-center mb-8">
       <div class="w-24 h-24 rounded-full overflow-hidden mx-auto mb-6 shadow-lg border-4 border-white">
-         <img src="logo.jpg" alt="Logo" class="w-full h-full object-cover">
+         <img src="JERS-LOGO.png" alt="Logo" class="w-full h-full object-cover">
       </div>
 
       <h1 class="text-3xl font-bold text-brand-900 mb-2">
