@@ -1,0 +1,97 @@
+/* SIDEBAR */
+.sidebar {
+  position: fixed;
+  width: 240px;
+  height: 100%;
+  background: #610C27;
+  transition: 0.3s;
+  display: flex;
+  flex-direction: column;
+}
+
+/* COLLAPSE */
+.sidebar.collapsed {
+  width: 70px;
+}
+
+/* HEADER */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 15px;
+  color: white;
+}
+
+/* ✅ FORCE SPACE BELOW HEADER (ALWAYS) */
+.sidebar a:first-of-type {
+  margin-top: 15px;
+}
+
+/* ADMIN TEXT */
+.logo-text {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* TOGGLE BUTTON */
+.toggle-btn {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  
+  background: #a61b4a;
+  color: white;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* LINKS */
+.sidebar a {
+  display: flex;
+  align-items: center;
+  gap: 14px; /* slightly better spacing */
+  padding: 13px 20px;
+  color: #f9dbe5;
+  text-decoration: none;
+  transition: 0.2s;
+}
+
+.sidebar a:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+/* ICONS (Font Awesome) */
+.sidebar i {
+  font-size: 22px;
+  width: 26px;
+  text-align: center;
+}
+
+/* TEXT */
+.sidebar .text {
+  transition: 0.3s;
+}
+
+/* COLLAPSED STATE */
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .text {
+  display: none;
+}
+
+/* ✅ CENTER ICONS WHEN COLLAPSED (BONUS FIX) */
+.sidebar.collapsed a {
+  justify-content: center;
+  padding: 13px 0;
+}
+/* PUSH LOGOUT TO BOTTOM */
+.sidebar .logout {
+  margin-top: auto;
+}
