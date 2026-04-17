@@ -85,9 +85,9 @@ tailwind.config = {
 
     <p class="text-center mt-8 text-brand-500">
       Don't have an account?
-      <button class="font-medium text-brand-900 hover:text-brand-500">
+      <a href="register.php" class="font-medium text-brand-900 hover:text-brand-500">
         Sign up
-      </button>
+      </a>
     </p>
 
   </div>

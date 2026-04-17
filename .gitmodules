@@ -1,0 +1,3 @@
+[submodule "Captcha"]
+	path = Captcha
+	url = https://github.com/Gregwar/Captcha.git
