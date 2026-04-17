@@ -27,6 +27,8 @@
   <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
   <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
   <a href="#"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
   <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
@@ -37,7 +39,8 @@
   <!-- Header -->
   <div class="mb-6 flex justify-between items-center">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Analytics & Reports</h1>
+      <h1 style="font-size: 32px; font-weight: bold; color: #610C27; margin-bottom: 5px;">
+      Analytic & Reports</h1>
       <p class="text-gray-500">Platform-wide performance and customer behavior insights.</p>
     </div>
     <div class="flex gap-2">
