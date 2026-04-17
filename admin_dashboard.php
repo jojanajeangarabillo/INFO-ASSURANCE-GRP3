@@ -7,7 +7,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<!-- EXTERNAL CSS -->
 <link rel="stylesheet" href="sidebar.css">
 
 <style>
@@ -92,11 +91,13 @@ body {
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="#"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="#"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_dashboard.php"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
   <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
   <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="#"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_orders.php"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
   <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 
