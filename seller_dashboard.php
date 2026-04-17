@@ -83,8 +83,8 @@
     <div class="logo-text">Seller</div>
   </div>
 
-  <a href="#"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
-  <a href="#"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
+  <a href="seller_dashboard.php"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
+  <a href="seller_products.php"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
   <a href="#"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
   <a href="#"><i class="bi bi-shop"></i><span class="text">Store Profile</span></a>
   <a href="#"><i class="bi bi-chat-dots"></i><span class="text">Chat</span></a>
@@ -196,19 +196,19 @@
 <tbody>
 
 <tr>
-  <td>Sony WH-1000XM4</td>
+  <td>Classic White T-Shirt</td>
   <td>45</td>
   <td><span class="badge-soft">Active</span></td>
 </tr>
 
 <tr>
-  <td>Minimalist Desk Lamp</td>
+  <td>Minimalist Hoodie</td>
   <td>12</td>
   <td><span class="badge-soft">Active</span></td>
 </tr>
 
 <tr>
-  <td>Ergonomic Mouse</td>
+  <td>Slim Fit Jeans</td>
   <td>0</td>
   <td><span class="badge-red">Out of Stock</span></td>
 </tr>
