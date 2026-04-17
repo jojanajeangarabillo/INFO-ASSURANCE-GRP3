@@ -135,7 +135,8 @@ tr:hover {
 <!-- MAIN CONTENT -->
 <div class="container" id="main">
 
-<h1>Platform Orders</h1>
+<h1 style="font-size: 32px; font-weight: bold; color: #610C27; margin-bottom: 5px;">
+  Platform Orders</h1>
 <p>Track and monitor all orders across the platform.</p>
 
 <!-- STATS -->

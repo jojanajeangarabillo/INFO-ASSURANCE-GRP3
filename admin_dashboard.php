@@ -21,7 +21,7 @@ body {
 .container {
   margin-left: 240px;
   padding: 20px;
-  transition: 0.3s;
+  transition: margin-left 0.3s ease;
 }
 
 .container.full {
@@ -85,22 +85,20 @@ body {
 <!-- SIDEBAR -->
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
-
   <div class="sidebar-header">
     <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="admin_dashboard.php"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="admin_analytics.php"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="#"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="#"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
   <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
   <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="admin_orders.php"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="#"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
   <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
   <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
   <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
-
 </div>
 
 <!-- CONTENT -->

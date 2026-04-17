@@ -39,7 +39,8 @@
   <!-- Header -->
   <div class="mb-6 flex justify-between items-center">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Analytics & Reports</h1>
+      <h1 style="font-size: 32px; font-weight: bold; color: #610C27; margin-bottom: 5px;">
+      Analytic & Reports</h1>
       <p class="text-gray-500">Platform-wide performance and customer behavior insights.</p>
     </div>
     <div class="flex gap-2">
