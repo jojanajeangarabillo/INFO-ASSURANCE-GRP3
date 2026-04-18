@@ -2,11 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Order Management</title>
-
+<title>Admin Reports</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <link rel="stylesheet" href="sidebar.css">
 
 <style>
@@ -16,28 +14,25 @@ body {
   background: #fdf2f6;
 }
 
-/* SAME LAYOUT */
 .container {
   margin-left: 240px;
   padding: 20px;
-  transition: 0.3s;
+  transition: margin-left 0.3s ease;
 }
 
 .container.full {
   margin-left: 70px;
 }
 
-/* GRID */
 .grid {
   display: grid;
   gap: 20px;
 }
 
 .grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
-/* CARDS (MATCH DASHBOARD STYLE) */
 .card {
   background: #610C27;
   color: white;
@@ -45,66 +40,28 @@ body {
   border-radius: 12px;
 }
 
-.card small {
-  opacity: 0.8;
+.box {
+  background: #EFECE9;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
-/* SEARCH */
-.search-box {
-  background: white;
-  padding: 12px;
-  border-radius: 10px;
-  margin-bottom: 20px;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-}
-
-/* TABLE */
 table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
+  margin-top: 15px;
 }
 
 th, td {
   padding: 12px;
   text-align: left;
+  border-bottom: 1px solid #ddd;
 }
 
 th {
-  background: #EFECE9;
-  font-size: 12px;
-}
-
-tr:hover {
-  background: #fdf2f6;
-}
-
-/* BADGES */
-.badge {
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-}
-
-.success { background: #d1fae5; color: #065f46; }
-.warning { background: #fef3c7; color: #92400e; }
-.danger { background: #fee2e2; color: #991b1b; }
-
-/* BUTTON */
-.btn {
-  border: 1px solid #ccc;
-  padding: 5px 10px;
-  border-radius: 6px;
-  background: white;
-  cursor: pointer;
+  background: #f9dbe5;
+  color: #610C27;
 }
 h1 {
   color: #610C27;
@@ -146,93 +103,89 @@ function toggleSidebar() {
 <!-- CONTENT -->
 <div class="container" id="main">
 
-<h1>Platform Orders</h1>
-<p>Track and monitor all orders across the platform.</p>
+<h1>Analytics & Reports</h1>
+<p>Detailed performance reports and sales data.</p>
 
-<br>
-
-<!-- STATS -->
 <div class="grid grid-3">
-
-  <div class="card">
-    <small>Total Orders</small>
-    <h2>12,490</h2>
+  <div class="box">
+    <h3>Monthly Sales Report</h3>
+    <canvas id="salesChart"></canvas>
   </div>
-
-  <div class="card">
-    <small>Total Revenue</small>
-    <h2>₱845.2K</h2>
+  <div class="box">
+    <h3>User Growth Report</h3>
+    <canvas id="userChart"></canvas>
   </div>
-
-  <div class="card">
-    <small>Pending Fulfillment</small>
-    <h2>342</h2>
-  </div>
-
 </div>
 
 <br>
 
-<!-- SEARCH -->
-<div class="search-box">
-  <input type="text" placeholder="Search Order ID or Customer Email">
+<div class="box">
+  <h3>Recent Sales Data</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Order ID</th>
+        <th>Category</th>
+        <th>Amount</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2023-10-18</td>
+        <td>#ORD-1001</td>
+        <td>Electronics</td>
+        <td>₱5,400.00</td>
+        <td>Completed</td>
+      </tr>
+      <tr>
+        <td>2023-10-17</td>
+        <td>#ORD-1002</td>
+        <td>Fashion</td>
+        <td>₱1,200.00</td>
+        <td>Completed</td>
+      </tr>
+      <tr>
+        <td>2023-10-17</td>
+        <td>#ORD-1003</td>
+        <td>Home</td>
+        <td>₱2,800.00</td>
+        <td>Pending</td>
+      </tr>
+    </tbody>
+  </table>
 </div>
-
-<!-- TABLE -->
-<table>
-<thead>
-<tr>
-  <th>Order ID</th>
-  <th>Customer</th>
-  <th>Total</th>
-  <th>Payment</th>
-  <th>Fraud</th>
-  <th>Status</th>
-  <th>Action</th>
-</tr>
-</thead>
-
-<tbody>
-
-<tr>
-  <td>#GLB-991</td>
-  <td>user1@email.com</td>
-  <td>₱245.00</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge warning">Processing</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
-
-<tr>
-  <td>#GLB-992</td>
-  <td>user2@email.com</td>
-  <td>₱89.50</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge success">Delivered</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
-
-<tr style="background:#fee2e2;">
-  <td>#GLB-993</td>
-  <td>suspicious@email.com</td>
-  <td>₱45,000.00</td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><span class="badge danger">Suspicious</span></td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
-
-</tbody>
-</table>
 
 </div>
 
 <script>
-function updateStatus(orderId) {
-  alert('Update status for order: ' + orderId);
-}
+const salesCtx = document.getElementById('salesChart').getContext('2d');
+new Chart(salesCtx, {
+  type: 'bar',
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    datasets: [{
+      label: 'Sales (₱)',
+      data: [12000, 19000, 3000, 5000, 20000, 30000],
+      backgroundColor: '#610C27'
+    }]
+  }
+});
+
+const userCtx = document.getElementById('userChart').getContext('2d');
+new Chart(userCtx, {
+  type: 'line',
+  data: {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    datasets: [{
+      label: 'New Users',
+      data: [150, 230, 180, 400, 560, 720],
+      borderColor: '#a61b4a',
+      fill: false
+    }]
+  }
+});
 </script>
 
 </body>

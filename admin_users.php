@@ -4,10 +4,7 @@
 <meta charset="UTF-8">
 <title>User Management</title>
 
-<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
-<!-- SIDEBAR CSS -->
 <link rel="stylesheet" href="sidebar.css">
 
 <style>
@@ -24,6 +21,14 @@ body {
 }
 .container.full {
   margin-left: 70px;
+}
+
+/* title */
+.page-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #610C27;
+  margin-bottom: 5px;
 }
 
 /* tabs */
@@ -46,6 +51,7 @@ body {
   padding: 15px;
   border-radius: 10px;
   margin-bottom: 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
 /* table */
@@ -54,12 +60,14 @@ table {
   border-collapse: collapse;
 }
 th, td {
-  padding: 10px;
+  padding: 12px;
   border-bottom: 1px solid #ddd;
+  text-align: left;
 }
 th {
   background: #f9dbe5;
-  font-size: 12px;
+  font-size: 13px;
+  color: #610C27;
 }
 
 /* badges */
@@ -68,52 +76,65 @@ th {
   border-radius: 20px;
   font-size: 12px;
 }
-.success { background: #d1fae5; }
-.warning { background: #fef3c7; }
-.danger { background: #fee2e2; }
+.success { background: #d1fae5; color: #065f46; }
+.warning { background: #fef3c7; color: #92400e; }
+.danger { background: #fee2e2; color: #991b1b; }
 
 /* buttons */
 .btn {
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
   border: 1px solid #ccc;
+  font-size: 14px;
 }
 .btn-primary {
   background: #a61b4a;
   color: white;
   border: none;
 }
+.mb-4 { margin-bottom: 1rem; }
+h1 {
+  color: #610C27;
+}
 </style>
 </head>
 
 <body>
 
+<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
-
   <div class="sidebar-header">
-    <span class="toggle-btn" onclick="toggleSidebar()">☰</span>
+    <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="admin_dashboard.php"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="admin_analytics.php"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="admin_orders.php"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
-  <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
-  <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
+  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
+  <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
+  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="admin_security.php" class="<?php echo $current_page == 'admin_security.php' ? 'active' : ''; ?>"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
+  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
+  
+  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
+
+<script>
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const main = document.getElementById("main");
+  if (sidebar) sidebar.classList.toggle("collapsed");
+  if (main) main.classList.toggle("full");
+}
+</script>
 
 <!-- MAIN -->
 <div class="container" id="main">
 
-<h1 style="font-size: 32px; font-weight: bold; color: #610C27; margin-bottom: 5px;">
-  User Management
-</h1>
+<h1 class="page-title">User Management</h1>
 <p>Manage all platform users, roles, and permissions.</p>
 
 <!-- ADD BUTTON -->
@@ -253,11 +274,6 @@ th {
 
 <!-- SCRIPTS -->
 <script>
-function toggleSidebar() {
-  document.getElementById("sidebar").classList.toggle("collapsed");
-  document.getElementById("main").classList.toggle("full");
-}
-
 function showTab(tab) {
   document.getElementById('users').style.display = 'none';
   document.getElementById('pending').style.display = 'none';

@@ -77,12 +77,15 @@ body {
   width: 30px;
   text-align: center;
 }
+h1 {
+  color: #610C27;
+}
 </style>
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
+<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
@@ -90,16 +93,26 @@ body {
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="#"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="#"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="#"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
-  <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
-  <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
+  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
+  <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
+  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="admin_security.php" class="<?php echo $current_page == 'admin_security.php' ? 'active' : ''; ?>"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
+  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
+  
+  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
+
+<script>
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const main = document.getElementById("main");
+  if (sidebar) sidebar.classList.toggle("collapsed");
+  if (main) main.classList.toggle("full");
+}
+</script>
 
 <!-- CONTENT -->
 <div class="container" id="main">
@@ -143,11 +156,6 @@ body {
 </div>
 
 <script>
-function toggleSidebar() {
-  document.getElementById("sidebar").classList.toggle("collapsed");
-  document.getElementById("main").classList.toggle("full");
-}
-
 new Chart(document.getElementById('chart'), {
   type: 'line',
   data: {

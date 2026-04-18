@@ -1,20 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Analytics & Reports</title>
+<meta charset="UTF-8">
+<title>Analytics & Reports</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="sidebar.css">
 
-  <!-- YOUR EXTERNAL SIDEBAR CSS -->
-  <link rel="stylesheet" href="sidebar.css">
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #fdf2f6;
+}
+
+/* SAME LAYOUT */
+.container {
+  margin-left: 240px;
+  padding: 20px;
+  transition: margin-left 0.3s ease;
+}
+
+.container.full {
+  margin-left: 70px;
+}
+
+/* GRID */
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+/* CARDS */
+.card {
+  background: #610C27;
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+}
+
+/* BOX */
+.box {
+  background: #EFECE9;
+  padding: 20px;
+  border-radius: 12px;
+}
+h1 {
+  color: #610C27;
+}
+
+/* TABLE */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background: #eee;
+  padding: 10px;
+  text-align: left;
+}
+
+td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+</style>
 </head>
 
-<body class="bg-gray-100">
+<body>
 
+<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
@@ -22,105 +83,81 @@
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="#"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="#"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="#"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="#"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="#"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="#"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="#"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
-  <a href="#"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
-  <a href="#" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
+  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
+  <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
+  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="admin_security.php" class="<?php echo $current_page == 'admin_security.php' ? 'active' : ''; ?>"><i class="fas fa-shield-halved"></i><span class="text">Security</span></a>
+  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
+  
+  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
 
-<!-- MAIN CONTENT -->
-<div id="mainContent" class="ml-[240px] p-6 transition-all duration-300">
-
-  <!-- Header -->
-  <div class="mb-6 flex justify-between items-center">
-    <div>
-      <h1 style="font-size: 32px; font-weight: bold; color: #610C27; margin-bottom: 5px;">
-      Analytic & Reports</h1>
-      <p class="text-gray-500">Platform-wide performance and customer behavior insights.</p>
-    </div>
-    <div class="flex gap-2">
-      <button class="bg-white border px-4 py-2 rounded">Export CSV</button>
-      <button class="bg-blue-600 text-white px-4 py-2 rounded">Export PDF</button>
-    </div>
-  </div>
-
-  <!-- Customer Behavior -->
-  <h2 class="text-xl font-bold text-gray-900 mb-2">Customer Behavior</h2>
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-
-    <div class="bg-white p-6 border-l-4 border-blue-500 rounded shadow">
-      <div class="mb-4">📈</div>
-      <div class="text-sm text-gray-500">Top Category</div>
-      <div class="text-2xl font-bold">Electronics</div>
-      <div class="text-xs text-green-600 mt-2">+12% from last month</div>
-    </div>
-
-    <div class="bg-white p-6 border-l-4 border-blue-500 rounded shadow">
-      <div class="mb-4">👥</div>
-      <div class="text-sm text-gray-500">Avg Order Value</div>
-      <div class="text-2xl font-bold">₱3,450</div>
-      <div class="text-xs text-green-600 mt-2">+5% from last month</div>
-    </div>
-
-    <div class="bg-white p-6 border-l-4 border-blue-500 rounded shadow">
-      <div class="mb-4">🔁</div>
-      <div class="text-sm text-gray-500">Repeat Customer Rate</div>
-      <div class="text-2xl font-bold">42%</div>
-      <div class="text-xs text-green-600 mt-2">+2% from last month</div>
-    </div>
-
-  </div>
-
-  <!-- Seller Performance -->
-  <h2 class="text-xl font-bold text-gray-900 mb-4">Seller Performance</h2>
-
-  <div class="bg-white rounded shadow overflow-hidden">
-    <div class="overflow-x-auto">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="bg-gray-100 border-b">
-            <th class="p-4 text-xs font-bold text-gray-500 uppercase">Seller Name</th>
-            <th class="p-4 text-xs font-bold text-gray-500 uppercase">Revenue</th>
-            <th class="p-4 text-xs font-bold text-gray-500 uppercase">Orders</th>
-            <th class="p-4 text-xs font-bold text-gray-500 uppercase">Rating</th>
-            <th class="p-4 text-xs font-bold text-gray-500 uppercase">Fulfillment Rate</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y">
-          <!-- your rows -->
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-</div>
-
-<!-- JS -->
 <script>
-function applyLayout() {
-  const sidebar = document.getElementById("sidebar");
-  const main = document.getElementById("mainContent");
-
-  if (sidebar.classList.contains("collapsed")) {
-    main.style.marginLeft = "70px";
-  } else {
-    main.style.marginLeft = "240px";
-  }
-}
-
 function toggleSidebar() {
   const sidebar = document.getElementById("sidebar");
-  sidebar.classList.toggle("collapsed");
-  applyLayout();
+  const main = document.getElementById("main");
+  if (sidebar) sidebar.classList.toggle("collapsed");
+  if (main) main.classList.toggle("full");
 }
-
-// ✅ RUN ON PAGE LOAD
-window.onload = applyLayout;
 </script>
+
+<!-- CONTENT -->
+<div class="container" id="main">
+
+<h1>Analytics & Reports</h1>
+<p>Platform-wide performance and customer behavior insights.</p>
+
+<br>
+
+<div class="grid grid-3">
+
+  <div class="card">
+    <small>Top Category</small>
+    <h2>Electronics</h2>
+  </div>
+
+  <div class="card">
+    <small>Avg Order Value</small>
+    <h2>₱3,450</h2>
+  </div>
+
+  <div class="card">
+    <small>Repeat Customers</small>
+    <h2>42%</h2>
+  </div>
+
+</div>
+
+<br>
+
+<div class="box">
+  <h3>Seller Performance</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Seller</th>
+        <th>Revenue</th>
+        <th>Orders</th>
+        <th>Rating</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Seller A</td><td>₱12,000</td><td>120</td><td>4.5</td></tr>
+      <tr><td>Seller B</td><td>₱9,500</td><td>98</td><td>4.2</td></tr>
+    </tbody>
+  </table>
+
+</div>
+
+</div>
+
+<script>
+new Chart(document.getElementById('revenueChart'), {
+</script>
+
 </body>
 </html>

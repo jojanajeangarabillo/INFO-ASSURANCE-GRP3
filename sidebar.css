@@ -68,6 +68,17 @@
   background: rgba(255,255,255,0.1);
 }
 
+/* ACTIVE LINK */
+.sidebar a.active {
+  background: white !important;
+  color: #610C27 !important;
+  font-weight: bold;
+}
+
+.sidebar a.active i {
+  color: #610C27 !important;
+}
+
 /* ICONS (Font Awesome) */
 .sidebar i {
   font-size: 22px;
