@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 17, 2026 at 06:03 AM
+-- Generation Time: Apr 19, 2026 at 01:19 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -54,6 +54,10 @@ CREATE TABLE `user` (
   `username` varchar(100) NOT NULL,
   `email` varchar(250) NOT NULL,
   `password` varchar(100) NOT NULL,
+  `otp_code` varchar(6) NOT NULL,
+  `otp_expiry` datetime NOT NULL,
+  `verification_token` varchar(100) NOT NULL,
+  `token_expiry` datetime NOT NULL,
   `is_activated` int(11) NOT NULL DEFAULT 0,
   `attempts` int(11) NOT NULL DEFAULT 0,
   `is_locked` int(11) NOT NULL DEFAULT 0,
@@ -78,7 +82,7 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

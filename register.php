@@ -40,11 +40,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
       $stmt = $conn->prepare("INSERT INTO user (username, email, password, role_id) VALUES (?, ?, ?, ?)");
       $stmt->bind_param("sssi", $username, $email, $hashed_password, $role_id);
       if ($stmt->execute()) {
-        // Clear captcha on success
-        unset($_SESSION['captcha']);
-        // Success, redirect to login
-        header('Location: login.php');
-        exit;
+        // Generate OTP
+        $otp = sprintf("%06d", mt_rand(1, 999999));
+        
+        // Update user with OTP using MySQL's NOW() to avoid timezone mismatch
+        $update_stmt = $conn->prepare("UPDATE user SET otp_code = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE email = ?");
+        $update_stmt->bind_param("ss", $otp, $email);
+        $update_stmt->execute();
+
+        // Send OTP Email
+        require 'admin/email.helper.php';
+        $subject = "Your Registration OTP";
+        $body = "<h1>Welcome to J3RS!</h1><p>Your OTP for registration is: <strong>$otp</strong></p><p>It will expire in 10 minutes.</p>";
+        
+        if (send_email($email, $subject, $body)) {
+          // Clear captcha on success
+          unset($_SESSION['captcha']);
+          // Redirect to OTP verification page
+          header("Location: verify_otp.php?email=" . urlencode($email));
+          exit;
+        } else {
+          $error = 'User registered but failed to send OTP email. Please contact support.';
+        }
       } else {
         $error = 'Registration failed, please try again';
       }

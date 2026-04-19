@@ -1,3 +1,4 @@
+<?php session_start(); ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,6 +46,13 @@ tailwind.config = {
       <p class="text-brand-500">
         Please enter your details to sign in.
       </p>
+
+      <?php
+      if (isset($_SESSION['success_message'])) {
+          echo "<div class='mt-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm text-center'>" . $_SESSION['success_message'] . "</div>";
+          unset($_SESSION['success_message']);
+      }
+      ?>
     </div>
 
     <!-- Card -->
