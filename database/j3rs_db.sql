@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 19, 2026 at 01:19 PM
+-- Generation Time: Apr 19, 2026 at 04:07 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -59,10 +59,19 @@ CREATE TABLE `user` (
   `verification_token` varchar(100) NOT NULL,
   `token_expiry` datetime NOT NULL,
   `is_activated` int(11) NOT NULL DEFAULT 0,
+  `mfa_secret` varchar(100) NOT NULL,
+  `last_failed_login` datetime DEFAULT current_timestamp(),
   `attempts` int(11) NOT NULL DEFAULT 0,
   `is_locked` int(11) NOT NULL DEFAULT 0,
   `role_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user`
+--
+
+INSERT INTO `user` (`user_id`, `username`, `email`, `password`, `otp_code`, `otp_expiry`, `verification_token`, `token_expiry`, `is_activated`, `mfa_secret`, `last_failed_login`, `attempts`, `is_locked`, `role_id`) VALUES
+(6, 'test', 'n0305933@gmail.com', '$2y$10$.Y40Fpy2G.188piUPEVFzO.pd6QJD9rukbiTbHaAfBKyYYq0hXG6m', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '', '2026-04-19 22:07:08', 0, 0, 2);
 
 --
 -- Indexes for dumped tables
@@ -82,7 +91,7 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
