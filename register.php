@@ -36,17 +36,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
       $hashed_password = password_hash($password, PASSWORD_DEFAULT);
       $role_id = 2; // Customer
 
-      // Insert user
-      $stmt = $conn->prepare("INSERT INTO user (username, email, password, role_id) VALUES (?, ?, ?, ?)");
-      $stmt->bind_param("sssi", $username, $email, $hashed_password, $role_id);
-      if ($stmt->execute()) {
+      $conn->begin_transaction();
+      try {
+        // Insert user
+        $stmt = $conn->prepare("INSERT INTO user (username, email, password, role_id) VALUES (?, ?, ?, ?)");
+        $stmt->bind_param("sssi", $username, $email, $hashed_password, $role_id);
+        $stmt->execute();
+        $newUserId = (int) $conn->insert_id;
+
+        // Insert initial customer profile row
+        $customerStmt = $conn->prepare("
+          INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
+          VALUES (?, ?, '', '', '', '', '')
+        ");
+        $customerStmt->bind_param("is", $newUserId, $username);
+        $customerStmt->execute();
+
         // Generate OTP
         $otp = sprintf("%06d", mt_rand(1, 999999));
-        
+
         // Update user with OTP using MySQL's NOW() to avoid timezone mismatch
         $update_stmt = $conn->prepare("UPDATE user SET otp_code = ?, otp_expiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE email = ?");
         $update_stmt->bind_param("ss", $otp, $email);
         $update_stmt->execute();
+        $conn->commit();
 
         // Send OTP Email
         require 'admin/email.helper.php';
@@ -62,7 +75,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } else {
           $error = 'User registered but failed to send OTP email. Please contact support.';
         }
-      } else {
+      } catch (Throwable $t) {
+        $conn->rollback();
         $error = 'Registration failed, please try again';
       }
     }

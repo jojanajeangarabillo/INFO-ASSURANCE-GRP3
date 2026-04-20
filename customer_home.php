@@ -1,4 +1,96 @@
-<?php ?>
+<?php
+require_once 'auth.php';
+require_roles([2, 4]);
+
+require_once 'admin/db.connect.php';
+
+$customerId = (int) $_SESSION['user_id'];
+$customerName = current_user_name();
+$search = trim($_GET['search'] ?? '');
+$category = trim($_GET['category'] ?? 'All');
+$flashMessage = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart_variant_id'])) {
+  $variantId = (int) $_POST['add_to_cart_variant_id'];
+  if ($variantId > 0) {
+    $conn->begin_transaction();
+    try {
+      $cartStmt = $conn->prepare("SELECT cart_id FROM cart WHERE user_id = ? LIMIT 1");
+      $cartStmt->bind_param("i", $customerId);
+      $cartStmt->execute();
+      $cartRes = $cartStmt->get_result();
+      if ($cartRes->num_rows > 0) {
+        $cartRow = $cartRes->fetch_assoc();
+        $cartId = (int) $cartRow['cart_id'];
+      } else {
+        $createCartStmt = $conn->prepare("INSERT INTO cart (user_id) VALUES (?)");
+        $createCartStmt->bind_param("i", $customerId);
+        $createCartStmt->execute();
+        $cartId = (int) $conn->insert_id;
+      }
+
+      $itemStmt = $conn->prepare("SELECT cart_item_id, quantity FROM cart_item WHERE cart_id = ? AND variant_id = ? LIMIT 1");
+      $itemStmt->bind_param("ii", $cartId, $variantId);
+      $itemStmt->execute();
+      $itemRes = $itemStmt->get_result();
+      if ($itemRes->num_rows > 0) {
+        $itemRow = $itemRes->fetch_assoc();
+        $newQty = (int) $itemRow['quantity'] + 1;
+        $updateStmt = $conn->prepare("UPDATE cart_item SET quantity = ?, updated_at = NOW() WHERE cart_item_id = ?");
+        $updateStmt->bind_param("ii", $newQty, $itemRow['cart_item_id']);
+        $updateStmt->execute();
+      } else {
+        $insertStmt = $conn->prepare("INSERT INTO cart_item (cart_id, variant_id, quantity) VALUES (?, ?, 1)");
+        $insertStmt->bind_param("ii", $cartId, $variantId);
+        $insertStmt->execute();
+      }
+
+      $conn->commit();
+      $flashMessage = "Item added to cart.";
+    } catch (Throwable $t) {
+      $conn->rollback();
+      $flashMessage = "Unable to add item to cart.";
+    }
+  }
+}
+
+$sql = "SELECT 
+          p.product_id,
+          p.name,
+          p.category_gender,
+          MIN(pv.price) AS min_price,
+          MIN(pv.variant_id) AS default_variant_id,
+          COALESCE(AVG(r.rating), 0) AS avg_rating,
+          COUNT(r.review_id) AS review_count
+        FROM product p
+        INNER JOIN product_variant pv ON pv.product_id = p.product_id
+        LEFT JOIN review r ON r.product_id = p.product_id
+        WHERE p.status = 'active'";
+
+$types = "";
+$params = [];
+
+if ($category === 'Men' || $category === 'Women') {
+  $sql .= " AND p.category_gender = ?";
+  $types .= "s";
+  $params[] = $category;
+}
+
+if ($search !== '') {
+  $sql .= " AND p.name LIKE ?";
+  $types .= "s";
+  $params[] = "%" . $search . "%";
+}
+
+$sql .= " GROUP BY p.product_id, p.name, p.category_gender ORDER BY p.created_at DESC LIMIT 24";
+
+$stmt = $conn->prepare($sql);
+if (!empty($params)) {
+  $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -402,15 +494,16 @@
       
       <div class="d-flex align-items-center gap-3 flex-wrap">
         <!-- Search bar -->
-        <div class="search-wrapper">
+        <form method="GET" class="search-wrapper">
           <i class="bi bi-search"></i>
-          <input type="text" placeholder="Search products...">
-        </div>
+          <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Search products...">
+          <input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>">
+        </form>
         <!-- User area: Jane Doe / Customer -->
         <div class="user-area">
-          <div class="user-avatar">JD</div>
+          <div class="user-avatar"><?php echo htmlspecialchars(strtoupper(substr($customerName, 0, 1))); ?></div>
           <div class="user-info">
-            <div class="user-name">Jane Doe</div>
+            <div class="user-name"><?php echo htmlspecialchars($customerName); ?></div>
             <div class="user-role">Customer</div>
           </div>
         </div>
@@ -421,12 +514,9 @@
     <div class="filter-section">
       <span class="filter-label">Filters</span>
       <div class="filter-chips">
-        <span class="filter-chip active">All</span>
-        <span class="filter-chip">Electronics</span>
-        <span class="filter-chip">Clothing</span>
-        <span class="filter-chip">Home & Garden</span>
-        <span class="filter-chip">Sports</span>
-        <span class="filter-chip">Beauty</span>
+        <a class="filter-chip <?php echo $category === 'All' ? 'active' : ''; ?>" href="?category=All&search=<?php echo urlencode($search); ?>">All</a>
+        <a class="filter-chip <?php echo $category === 'Men' ? 'active' : ''; ?>" href="?category=Men&search=<?php echo urlencode($search); ?>">Men</a>
+        <a class="filter-chip <?php echo $category === 'Women' ? 'active' : ''; ?>" href="?category=Women&search=<?php echo urlencode($search); ?>">Women</a>
       </div>
     </div>
 
@@ -435,79 +525,40 @@
       <h2 class="section-title">Recommended for You</h2>
     </div>
 
-    <!-- Product Grid: 4 cards -->
+    <?php if ($flashMessage !== ''): ?>
+      <div class="alert alert-info mb-3"><?php echo htmlspecialchars($flashMessage); ?></div>
+    <?php endif; ?>
+
+    <!-- Product Grid -->
     <div class="row g-4">
-      <!-- Sony WH-1000XM4 -->
-      <div class="col-sm-6 col-lg-3">
-        <div class="product-card card h-100">
-          <div class="product-icon">
-            <i class="bi bi-headphones"></i>
-          </div>
-          <div class="card-body">
-            <h5 class="product-title">Sony WH-1000XM4</h5>
-            <div class="rating-wrap">
-              <span class="rating-value"><i class="bi bi-star-fill me-1"></i>4.8</span>
-              <span class="review-count">(1,240 reviews)</span>
-            </div>
-            <div class="product-price">P16,999</div>
-            <button class="btn-add-cart" onclick="alert('Added Sony WH-1000XM4 to cart')">Add to Cart</button>
-          </div>
+      <?php if (empty($products)): ?>
+        <div class="col-12">
+          <div class="card p-4">No products available yet.</div>
         </div>
-      </div>
+      <?php endif; ?>
 
-      <!-- Minimalist Desk Lamp -->
+      <?php foreach ($products as $product): ?>
       <div class="col-sm-6 col-lg-3">
         <div class="product-card card h-100">
           <div class="product-icon">
-            <i class="bi bi-lightbulb"></i>
+            <i class="bi bi-bag"></i>
           </div>
           <div class="card-body">
-            <h5 class="product-title">Minimalist Desk Lamp</h5>
+            <h5 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h5>
             <div class="rating-wrap">
-              <span class="rating-value"><i class="bi bi-star-fill me-1"></i>4.5</span>
-              <span class="review-count">(320 reviews)</span>
+              <span class="rating-value"><i class="bi bi-star-fill me-1"></i><?php echo number_format((float) $product['avg_rating'], 1); ?></span>
+              <span class="review-count">(<?php echo (int) $product['review_count']; ?> reviews)</span>
             </div>
-            <div class="product-price">P2,450</div>
-            <button class="btn-add-cart" onclick="alert('Added Minimalist Desk Lamp to cart')">Add to Cart</button>
+            <div class="product-price">P<?php echo number_format((float) $product['min_price'], 2); ?></div>
+            <a class="btn-add-cart d-inline-block text-center text-decoration-none mb-2" href="product_details.php?product_id=<?php echo (int) $product['product_id']; ?>">View Details</a>
+            <form method="POST">
+              <input type="hidden" name="add_to_cart_variant_id" value="<?php echo (int) $product['default_variant_id']; ?>">
+              <button type="submit" class="btn-add-cart">Add to Cart</button>
+            </form>
           </div>
         </div>
       </div>
-
-      <!-- Mechanical Keyboard -->
-      <div class="col-sm-6 col-lg-3">
-        <div class="product-card card h-100">
-          <div class="product-icon">
-            <i class="bi bi-keyboard"></i>
-          </div>
-          <div class="card-body">
-            <h5 class="product-title">Mechanical Keyboard</h5>
-            <div class="rating-wrap">
-              <span class="rating-value"><i class="bi bi-star-fill me-1"></i>4.9</span>
-              <span class="review-count">(850 reviews)</span>
-            </div>
-            <div class="product-price">P5,200</div>
-            <button class="btn-add-cart" onclick="alert('Added Mechanical Keyboard to cart')">Add to Cart</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Ceramic Coffee Mug -->
-      <div class="col-sm-6 col-lg-3">
-        <div class="product-card card h-100">
-          <div class="product-icon">
-            <i class="bi bi-cup-straw"></i>
-          </div>
-          <div class="card-body">
-            <h5 class="product-title">Ceramic Coffee Mug</h5>
-            <div class="rating-wrap">
-              <span class="rating-value"><i class="bi bi-star-fill me-1"></i>4.7</span>
-              <span class="review-count">(145 reviews)</span>
-            </div>
-            <div class="product-price">P850</div>
-            <button class="btn-add-cart" onclick="alert('Added Ceramic Coffee Mug to cart')">Add to Cart</button>
-          </div>
-        </div>
-      </div>
+      <?php endforeach; ?>
     </div>
   </div>
 </div>
@@ -564,13 +615,6 @@ if(markAllBtn) {
 
 updateUnreadBadge();
 
-// Filter chip active toggle (visual only)
-document.querySelectorAll('.filter-chip').forEach(chip => {
-  chip.addEventListener('click', function() {
-    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-    this.classList.add('active');
-  });
-});
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
