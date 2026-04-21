@@ -19,7 +19,6 @@ body {
   margin: 0;
 }
 
-/* SIDEBAR */
 .sidebar {
   width: 240px;
   position: fixed;
@@ -30,7 +29,6 @@ body {
   width: 70px;
 }
 
-/* MAIN CONTENT */
 .main-content {
   margin-left: 240px;
   transition: 0.3s;
@@ -41,7 +39,6 @@ body {
   margin-left: 70px;
 }
 
-/* CARD STYLE */
 .card-custom {
   background: #fff;
   border-radius: 16px;
@@ -50,12 +47,10 @@ body {
   padding: 25px;
 }
 
-/* BRAND */
 :root {
   --brand: #6d0f1b;
 }
 
-/* BUTTON */
 .btn-brand {
   background: var(--brand);
   color: white;
@@ -66,7 +61,6 @@ body {
   background: #500b14;
 }
 
-/* TABS */
 .tab-btn {
   cursor: pointer;
   padding: 10px 15px;
@@ -78,7 +72,6 @@ body {
   color: white;
 }
 
-/* INPUT */
 .form-control, .form-select {
   border-radius: 10px;
 }
@@ -87,7 +80,6 @@ body {
 
 <body>
 
-<!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
 
   <div class="sidebar-header">
@@ -108,7 +100,6 @@ body {
 
 </div>
 
-<!-- MAIN -->
 <div class="main-content">
 
 <div class="container-fluid">
@@ -116,15 +107,12 @@ body {
 <h3 class="fw-bold">Store Settings</h3>
 <p class="text-muted">Manage your store profile and preferences.</p>
 
-<!-- TABS -->
 <div class="d-flex gap-2 mb-4">
   <div class="tab-btn tab-active" onclick="switchTab('profile')">Store Profile</div>
   <div class="tab-btn" onclick="switchTab('business')">Business Details</div>
   <div class="tab-btn" onclick="switchTab('shipping')">Shipping & Returns</div>
-  <div class="tab-btn" onclick="switchTab('channels')">Multi-Channel</div>
 </div>
 
-<!-- STORE PROFILE -->
 <div id="profile" class="tab-content">
 
 <div class="card-custom mb-4">
@@ -142,7 +130,6 @@ body {
 
 </div>
 
-<!-- BUSINESS DETAILS -->
 <div id="business" class="tab-content d-none">
 
 <div class="card-custom mb-4">
@@ -167,7 +154,6 @@ body {
 
 </div>
 
-<!-- SHIPPING -->
 <div id="shipping" class="tab-content d-none">
 
 <div class="card-custom mb-4">
@@ -183,51 +169,6 @@ body {
 
 <div class="text-end">
 <button class="btn btn-brand">Save Policies</button>
-</div>
-
-</div>
-
-<!-- MULTI CHANNEL -->
-<div id="channels" class="tab-content d-none">
-
-<div class="card-custom">
-
-<h5 class="fw-bold mb-2">Sales Channels</h5>
-<p class="text-muted mb-4">Connect your store to other platforms.</p>
-
-<div class="d-flex justify-content-between align-items-center mb-3 p-3 border rounded">
-  <div class="d-flex gap-3 align-items-center">
-    <div class="bg-warning text-white p-3 rounded">S</div>
-    <div>
-      <strong>Shopee</strong><br>
-      <small class="text-muted">Sync products and orders</small>
-    </div>
-  </div>
-  <input type="checkbox" checked>
-</div>
-
-<div class="d-flex justify-content-between align-items-center mb-3 p-3 border rounded">
-  <div class="d-flex gap-3 align-items-center">
-    <div class="bg-primary text-white p-3 rounded">L</div>
-    <div>
-      <strong>Lazada</strong><br>
-      <small class="text-muted">Sync products and orders</small>
-    </div>
-  </div>
-  <input type="checkbox">
-</div>
-
-<div class="d-flex justify-content-between align-items-center p-3 border rounded">
-  <div class="d-flex gap-3 align-items-center">
-    <div class="bg-dark text-white p-3 rounded">T</div>
-    <div>
-      <strong>TikTok Shop</strong><br>
-      <small class="text-muted">Sync products and orders</small>
-    </div>
-  </div>
-  <input type="checkbox">
-</div>
-
 </div>
 
 </div>
