@@ -69,11 +69,13 @@ require_roles([3, 4]);
     <div class="logo-text">Seller</div>
   </div>
 
-  <a href="seller_dashboard.php"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
-  <a href="seller_products.php" class="active"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
-  <a href="seller_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
-  <a href="seller_profile.php"><i class="bi bi-shop"></i><span class="text">Store Profile</span></a>
-  <a href="seller_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat</span></a>
+    <a href="seller_dashboard.php"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
+    <a href="seller_products.php" class="active"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
+    <a href="seller_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
+    <a href="seller_inventory.php"><i class="bi bi-box"></i><span class="text">Inventory</span></a>
+    <a href="seller_reviews.php"><i class="bi bi-star"></i><span class="text">Reviews</span></a>
+    <a href="seller_profile.php"><i class="bi bi-shop"></i><span class="text">Profile</span></a>
+    <a href="seller_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat</span></a>
 
   <a href="#" class="logout">
     <i class="bi bi-box-arrow-right"></i>
