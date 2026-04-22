@@ -1,7 +1,53 @@
 <?php
 require_once 'auth.php';
 require_roles([3, 4]);
+
+require_once __DIR__ . '/admin/db.connect.php';
+
+$user_id = $_SESSION['user_id'] ?? 0;
+$message = '';
+$error = '';
+
+// Handle Profile Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
+    $shop_name = trim($_POST['shop_name'] ?? '');
+    $shop_description = trim($_POST['shop_description'] ?? '');
+    $shop_address = trim($_POST['shop_address'] ?? '');
+    $contact_number = trim($_POST['contact_number'] ?? '');
+
+    if (empty($shop_name)) {
+        $error = "Shop name is required.";
+    } else {
+        $stmt = $conn->prepare("UPDATE seller SET shop_name = ?, shop_description = ?, shop_address = ?, contact_number = ? WHERE user_id = ?");
+        $stmt->bind_param("ssssi", $shop_name, $shop_description, $shop_address, $contact_number, $user_id);
+        if ($stmt->execute()) {
+            $message = "Profile updated successfully!";
+        } else {
+            $error = "Failed to update profile.";
+        }
+        $stmt->close();
+    }
+}
+
+$seller_stmt = $conn->prepare("
+    SELECT s.*, u.username, u.email
+    FROM seller s
+    JOIN user u ON s.user_id = u.user_id
+    WHERE s.user_id = ?
+");
+$seller_stmt->bind_param("i", $user_id);
+$seller_stmt->execute();
+$seller_result = $seller_stmt->get_result();
+$seller = $seller_result->fetch_assoc();
+$seller_stmt->close();
+
+$shop_name = $seller['shop_name'] ?? '';
+$shop_description = $seller['shop_description'] ?? '';
+$shop_address = $seller['shop_address'] ?? '';
+$contact_number = $seller['contact_number'] ?? '';
+$email = $seller['email'] ?? '';
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -94,7 +140,7 @@ body {
     <a href="seller_reviews.php"><i class="bi bi-star"></i><span class="text">Reviews</span></a>
     <a href="seller_profile.php" class="active"><i class="bi bi-shop"></i><span class="text">Profile</span></a>
     <a href="seller_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat</span></a>
-  <a href="#" class="logout">
+  <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>
     <span class="text">Logout</span>
   </a>
@@ -108,69 +154,62 @@ body {
 <h3 class="fw-bold">Store Settings</h3>
 <p class="text-muted">Manage your store profile and preferences.</p>
 
+<?php if ($message): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <?php echo $message; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
+
+<?php if ($error): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?php echo $error; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
+
 <div class="d-flex gap-2 mb-4">
   <div class="tab-btn tab-active" onclick="switchTab('profile')">Store Profile</div>
-  <div class="tab-btn" onclick="switchTab('business')">Business Details</div>
-  <div class="tab-btn" onclick="switchTab('shipping')">Shipping & Returns</div>
 </div>
 
 <div id="profile" class="tab-content">
 
+<form action="" method="POST">
 <div class="card-custom mb-4">
 <h5 class="fw-bold mb-3">Store Information</h5>
 
-<input class="form-control mb-3" value="TechGadgets Official">
-<input class="form-control mb-3" value="j3rs.com/store/techgadgets">
-<textarea class="form-control mb-3">Premium electronics.</textarea>
+<div class="mb-3">
+    <label class="form-label text-muted small fw-bold">SHOP NAME</label>
+    <input name="shop_name" class="form-control" value="<?php echo htmlspecialchars($shop_name); ?>" required>
+</div>
+
+<div class="mb-3">
+    <label class="form-label text-muted small fw-bold">SHOP DESCRIPTION</label>
+    <textarea name="shop_description" class="form-control" rows="3"><?php echo htmlspecialchars($shop_description); ?></textarea>
+</div>
+
+<div class="mb-3">
+    <label class="form-label text-muted small fw-bold">SHOP ADDRESS</label>
+    <input name="shop_address" class="form-control" value="<?php echo htmlspecialchars($shop_address); ?>">
+</div>
+
+<div class="mb-3">
+    <label class="form-label text-muted small fw-bold">CONTACT NUMBER</label>
+    <input name="contact_number" class="form-control" value="<?php echo htmlspecialchars($contact_number); ?>">
+</div>
+
+<div class="mb-3">
+    <label class="form-label text-muted small fw-bold">EMAIL ADDRESS</label>
+    <input class="form-control" value="<?php echo htmlspecialchars($email); ?>" disabled>
+    <small class="text-muted">Email cannot be changed here.</small>
+</div>
 
 </div>
 
 <div class="text-end">
-<button class="btn btn-brand">Save Settings</button>
+<button type="submit" name="update_profile" class="btn btn-brand">Save Settings</button>
 </div>
-
-</div>
-
-<div id="business" class="tab-content d-none">
-
-<div class="card-custom mb-4">
-<h5 class="fw-bold mb-3">Business Information</h5>
-
-<input class="form-control mb-3" value="TechGadgets Inc.">
-
-<select class="form-select mb-3">
-<option>Corporation</option>
-<option>Individual</option>
-<option>Partnership</option>
-</select>
-
-<input class="form-control mb-3" value="123-456-789-000">
-<input class="form-control mb-3" value="CS202312345">
-
-</div>
-
-<div class="text-end">
-<button class="btn btn-brand">Save Settings</button>
-</div>
-
-</div>
-
-<div id="shipping" class="tab-content d-none">
-
-<div class="card-custom mb-4">
-<h5 class="fw-bold mb-3">Store Policies</h5>
-
-<textarea class="form-control mb-3">Orders are processed within 1-2 business days. Standard shipping takes 3-5 days.</textarea>
-
-<textarea class="form-control mb-3">We accept returns within 30 days of delivery.</textarea>
-
-<textarea class="form-control mb-3">1-year manufacturer warranty.</textarea>
-
-</div>
-
-<div class="text-end">
-<button class="btn btn-brand">Save Policies</button>
-</div>
+</form>
 
 </div>
 
