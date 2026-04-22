@@ -97,9 +97,49 @@ require_roles([3, 4]);
   <button class="btn btn-outline-secondary">
     <i class="bi bi-upload"></i> Bulk Upload
   </button>
-  <button class="btn btn-brand">
+  <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addProductModal">
     <i class="bi bi-plus-lg"></i> Add Product
   </button>
+</div>
+
+<!-- ADD PRODUCT MODAL -->
+<div class="modal fade" id="addProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header" style="background: #6d0f1b; color: white;">
+        <h5 class="modal-title">Add New Product</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1) grayscale(100%) brightness(200%);"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addProductForm">
+          <div class="mb-3">
+            <label class="form-label">Product Name</label>
+            <input type="text" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Price</label>
+            <input type="number" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Stock</label>
+            <input type="number" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Category</label>
+            <select class="form-select">
+              <option>Electronics</option>
+              <option>Home</option>
+              <option>Clothing</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-brand">Add Product</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- FILTER -->
@@ -168,36 +208,10 @@ require_roles([3, 4]);
 
 </div>
 
-<!-- SEO TOOLS -->
-<div class="card p-4">
-
-<h5 class="fw-bold mb-3">SEO Tools</h5>
-<p class="text-muted">Optimize your products for search engines.</p>
-
-<div class="mb-3">
-<label>Select Product</label>
-<select class="form-select">
-<option>Classic White T-Shirt</option>
-<option>Minimalist Hoodie</option>
-</select>
-</div>
-
-<div class="mb-3">
-<label>Meta Title</label>
-<input class="form-control" placeholder="Enter meta title">
-</div>
-
-<div class="mb-3">
-<label>Meta Description</label>
-<textarea class="form-control" rows="3"></textarea>
-</div>
-
-<button class="btn btn-brand">Save SEO Settings</button>
-
-</div>
-
 </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- JS -->
 <script>
