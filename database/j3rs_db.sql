@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 22, 2026 at 03:18 PM
+-- Generation Time: Apr 23, 2026 at 10:51 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -78,6 +78,30 @@ CREATE TABLE `conversation` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `customer`
+--
+
+CREATE TABLE `customer` (
+  `user_id` int(11) NOT NULL,
+  `customer_id` int(11) NOT NULL,
+  `full_name` varchar(100) NOT NULL,
+  `contact_number` varchar(12) NOT NULL,
+  `address_line` varchar(255) NOT NULL,
+  `city` varchar(100) NOT NULL,
+  `region` varchar(100) NOT NULL,
+  `postal_code` varchar(10) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `customer`
+--
+
+INSERT INTO `customer` (`user_id`, `customer_id`, `full_name`, `contact_number`, `address_line`, `city`, `region`, `postal_code`) VALUES
+(11, 1, '', '', '', '', '', '');
 
 -- --------------------------------------------------------
 
@@ -340,21 +364,25 @@ CREATE TABLE `security_settings` (
 CREATE TABLE `seller` (
   `seller_id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
+  `full_name` varchar(150) NOT NULL,
   `shop_name` varchar(150) NOT NULL,
   `shop_description` text DEFAULT NULL,
   `shop_address` varchar(255) DEFAULT NULL,
   `contact_number` varchar(30) DEFAULT NULL,
   `is_approved` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `business_permit` longblob DEFAULT NULL,
+  `valid_id` longblob DEFAULT NULL,
+  `shop_image` longblob DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `seller`
 --
 
-INSERT INTO `seller` (`seller_id`, `user_id`, `shop_name`, `shop_description`, `shop_address`, `contact_number`, `is_approved`, `created_at`, `updated_at`) VALUES
-(1, 7, 'sapme seller', 'seller sells products yes', '123 Pasig City', '1234355678', 1, '2026-04-22 19:58:21', '2026-04-22 19:58:21');
+INSERT INTO `seller` (`seller_id`, `user_id`, `full_name`, `shop_name`, `shop_description`, `shop_address`, `contact_number`, `is_approved`, `created_at`, `updated_at`, `business_permit`, `valid_id`, `shop_image`) VALUES
+(1, 7, '', 'sapme seller', 'seller sells products yes', '123 Pasig City', '1234355678', 1, '2026-04-22 19:58:21', '2026-04-22 19:58:21', NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -402,7 +430,8 @@ CREATE TABLE `user` (
 INSERT INTO `user` (`user_id`, `username`, `email`, `password`, `otp_code`, `otp_expiry`, `verification_token`, `token_expiry`, `is_activated`, `mfa_secret`, `last_failed_login`, `attempts`, `is_locked`, `role_id`) VALUES
 (1, 'admin', 'antonio_rhoannenicole@plpasig.edu.ph', '$2y$10$LdRoPWBEOsVfBfmTI3GO5.1JMD/eYXapDUljcxJtQN4G6ji0VtFfG', '', '2026-04-22 14:54:03', '', '2026-04-22 14:54:03', 1, 'XZ7T32GL5B42C6HJ', '2026-04-22 20:55:17', 0, 0, 1),
 (6, 'test', 'n0305933@gmail.com', '$2y$10$.Y40Fpy2G.188piUPEVFzO.pd6QJD9rukbiTbHaAfBKyYYq0hXG6m', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '3DBWVGAURVBVXHJM', '2026-04-19 22:07:08', 0, 0, 2),
-(7, 'seller', 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 0, 0, 3);
+(7, 'seller', 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 0, 0, 3),
+(11, 'customer', 'n42710140@gmail.com', '$2y$10$AzlQdqE3kZLviGUOCOlgiu6aB..qABPjcXFzEOgn3o2Z5ASem0Rqe', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '', '2026-04-23 15:59:21', 0, 0, 2);
 
 -- --------------------------------------------------------
 
@@ -464,6 +493,13 @@ ALTER TABLE `conversation`
   ADD PRIMARY KEY (`conversation_id`),
   ADD UNIQUE KEY `uk_conversation_customer_seller` (`customer_id`,`seller_id`),
   ADD KEY `idx_conversation_seller` (`seller_id`);
+
+--
+-- Indexes for table `customer`
+--
+ALTER TABLE `customer`
+  ADD PRIMARY KEY (`customer_id`),
+  ADD KEY `user_id` (`user_id`);
 
 --
 -- Indexes for table `delivery_tracking`
@@ -635,6 +671,12 @@ ALTER TABLE `conversation`
   MODIFY `conversation_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `customer`
+--
+ALTER TABLE `customer`
+  MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
 -- AUTO_INCREMENT for table `delivery_tracking`
 --
 ALTER TABLE `delivery_tracking`
@@ -728,7 +770,7 @@ ALTER TABLE `system_settings`
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `wishlist`
