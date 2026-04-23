@@ -46,10 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         // Insert initial customer profile row
         $customerStmt = $conn->prepare("
-          INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
-          VALUES (?, ?, '', '', '', '', '')
-        ");
-        $customerStmt->bind_param("is", $newUserId, $username);
+            INSERT INTO customer (user_id)
+            VALUES (?)
+          ");
+        $customerStmt->bind_param("i", $newUserId);
         $customerStmt->execute();
 
         // Generate OTP
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         require 'admin/email.helper.php';
         $subject = "Your Registration OTP";
         $body = "<h1>Welcome to J3RS!</h1><p>Your OTP for registration is: <strong>$otp</strong></p><p>It will expire in 10 minutes.</p>";
-        
+
         if (send_email($email, $subject, $body)) {
           // Clear captcha on success
           unset($_SESSION['captcha']);
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
       } catch (Throwable $t) {
         $conn->rollback();
-        $error = 'Registration failed, please try again';
+        die("ERROR: " . $t->getMessage());
       }
     }
     $stmt->close();
