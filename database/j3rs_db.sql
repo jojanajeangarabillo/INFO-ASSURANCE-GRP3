@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 23, 2026 at 10:51 AM
+-- Generation Time: Apr 23, 2026 at 03:27 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -392,9 +392,11 @@ INSERT INTO `seller` (`seller_id`, `user_id`, `full_name`, `shop_name`, `shop_de
 
 CREATE TABLE `system_settings` (
   `setting_id` int(11) NOT NULL,
+  `site_name` varchar(100) NOT NULL,
   `max_login_attempts` int(11) NOT NULL DEFAULT 3,
   `password_min_length` int(11) NOT NULL DEFAULT 12,
   `require_uppercase` tinyint(1) NOT NULL DEFAULT 1,
+  `require_lowercase` tinyint(1) NOT NULL DEFAULT 1,
   `require_number` tinyint(1) NOT NULL DEFAULT 1,
   `require_special_char` tinyint(1) NOT NULL DEFAULT 1,
   `session_timeout_minutes` int(11) NOT NULL DEFAULT 30
@@ -430,7 +432,7 @@ CREATE TABLE `user` (
 INSERT INTO `user` (`user_id`, `username`, `email`, `password`, `otp_code`, `otp_expiry`, `verification_token`, `token_expiry`, `is_activated`, `mfa_secret`, `last_failed_login`, `attempts`, `is_locked`, `role_id`) VALUES
 (1, 'admin', 'antonio_rhoannenicole@plpasig.edu.ph', '$2y$10$LdRoPWBEOsVfBfmTI3GO5.1JMD/eYXapDUljcxJtQN4G6ji0VtFfG', '', '2026-04-22 14:54:03', '', '2026-04-22 14:54:03', 1, 'XZ7T32GL5B42C6HJ', '2026-04-22 20:55:17', 0, 0, 1),
 (6, 'test', 'n0305933@gmail.com', '$2y$10$.Y40Fpy2G.188piUPEVFzO.pd6QJD9rukbiTbHaAfBKyYYq0hXG6m', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '3DBWVGAURVBVXHJM', '2026-04-19 22:07:08', 0, 0, 2),
-(7, 'seller', 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 0, 0, 3),
+(7, 'seller', 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 1, 0, 3),
 (11, 'customer', 'n42710140@gmail.com', '$2y$10$AzlQdqE3kZLviGUOCOlgiu6aB..qABPjcXFzEOgn3o2Z5ASem0Rqe', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '', '2026-04-23 15:59:21', 0, 0, 2);
 
 -- --------------------------------------------------------

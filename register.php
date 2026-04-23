@@ -6,8 +6,42 @@ require 'Captcha/src/Gregwar/Captcha/ImageFileHandler.php';
 require 'Captcha/src/Gregwar/Captcha/PhraseBuilder.php';
 require 'Captcha/src/Gregwar/Captcha/CaptchaBuilder.php';
 
+require 'admin/db.connect.php';
+
+// Load system settings
+$stmt = $conn->prepare("SELECT * FROM system_settings LIMIT 1");
+$stmt->execute();
+$result = $stmt->get_result();
+$settings = $result->num_rows > 0 ? $result->fetch_assoc() : [
+  'max_login_attempts' => 3,
+  'password_min_length' => 12,
+  'require_uppercase' => 1,
+  'require_lowercase' => 1,
+  'require_number' => 1,
+  'require_special_char' => 1
+];
+
+$password_min_length = $settings['password_min_length'];
+$require_uppercase = $settings['require_uppercase'];
+$require_lowercase = $settings['require_lowercase'];
+$require_number = $settings['require_number'];
+$require_special_char = $settings['require_special_char'];
+
+
+
+// Build password pattern
+$password_pattern = '/^';
+if ($require_lowercase > 0)
+  $password_pattern .= '(?=(?:.*[a-z]){' . $require_lowercase . ',})';
+if ($require_uppercase > 0)
+  $password_pattern .= '(?=(?:.*[A-Z]){' . $require_uppercase . ',})';
+if ($require_number > 0)
+  $password_pattern .= '(?=(?:.*\d){' . $require_number . ',})';
+if ($require_special_char > 0)
+  $password_pattern .= '(?=(?:.*[^A-Za-z0-9]){' . $require_special_char . ',})';
+$password_pattern .= '.{' . $password_min_length . ',}$/';
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-  require 'admin/db.connect.php';
 
   $username = trim($_POST['username'] ?? '');
   $email = trim($_POST['email'] ?? '');
@@ -22,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $error = 'All fields are required';
   } elseif ($password !== $confirm_password) {
     $error = 'Passwords do not match';
-  } elseif (strlen($password) < 12 || !preg_match('/[A-Z]/', $password) || !preg_match('/[a-z]/', $password) || !preg_match('/[0-9]/', $password) || !preg_match('/[^A-Za-z0-9]/', $password)) {
+  } elseif (!preg_match($password_pattern, $password)) {
     $error = 'Password does not meet requirements';
   } else {
     // Check if username or email exists
@@ -196,11 +230,11 @@ $captchaImage = $builder->inline();
 
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
 
-                <div id="rule-length">❌ At least 12 characters</div>
-                <div id="rule-upper">❌ Uppercase letter</div>
-                <div id="rule-lower">❌ Lowercase letter</div>
-                <div id="rule-number">❌ Number</div>
-                <div id="rule-special">❌ Special character</div>
+                <div id="rule-length" data-base="At least <?php echo $password_min_length; ?> characters">❌ At least <?php echo $password_min_length; ?> characters</div>
+                <div id="rule-upper" data-base="<?php echo $require_uppercase; ?> Uppercase letter<?php echo $require_uppercase > 1 ? 's' : ''; ?>">❌ <?php echo $require_uppercase; ?> Uppercase letter<?php echo $require_uppercase > 1 ? 's' : ''; ?></div>
+                <div id="rule-lower" data-base="<?php echo $require_lowercase; ?> Lowercase letter<?php echo $require_lowercase > 1 ? 's' : ''; ?>">❌ <?php echo $require_lowercase; ?> Lowercase letter<?php echo $require_lowercase > 1 ? 's' : ''; ?></div>
+                <div id="rule-number" data-base="<?php echo $require_number; ?> Number<?php echo $require_number > 1 ? 's' : ''; ?>">❌ <?php echo $require_number; ?> Number<?php echo $require_number > 1 ? 's' : ''; ?></div>
+                <div id="rule-special" data-base="<?php echo $require_special_char; ?> Special character<?php echo $require_special_char > 1 ? 's' : ''; ?>">❌ <?php echo $require_special_char; ?> Special character<?php echo $require_special_char > 1 ? 's' : ''; ?></div>
 
               </div>
             </div>
@@ -279,19 +313,34 @@ $captchaImage = $builder->inline();
   </div>
 
   <script>
+    const passwordRequirements = {
+      minLength: <?php echo $password_min_length; ?>,
+      upper: <?php echo $require_uppercase; ?>,
+      lower: <?php echo $require_lowercase; ?>,
+      number: <?php echo $require_number; ?>,
+      special: <?php echo $require_special_char; ?>
+    };
+
     function checkPassword() {
       let p = document.getElementById("password").value;
 
-      updateRule("rule-length", p.length >= 12);
-      updateRule("rule-upper", /[A-Z]/.test(p));
-      updateRule("rule-lower", /[a-z]/.test(p));
-      updateRule("rule-number", /[0-9]/.test(p));
-      updateRule("rule-special", /[^A-Za-z0-9]/.test(p));
+      // Count occurrences
+      const upperCount = (p.match(/[A-Z]/g) || []).length;
+      const lowerCount = (p.match(/[a-z]/g) || []).length;
+      const numberCount = (p.match(/[0-9]/g) || []).length;
+      const specialCount = (p.match(/[^A-Za-z0-9]/g) || []).length;
+
+      updateRule("rule-length", p.length >= passwordRequirements.minLength);
+      updateRule("rule-upper", upperCount >= passwordRequirements.upper);
+      updateRule("rule-lower", lowerCount >= passwordRequirements.lower);
+      updateRule("rule-number", numberCount >= passwordRequirements.number);
+      updateRule("rule-special", specialCount >= passwordRequirements.special);
     }
 
     function updateRule(id, valid) {
       let el = document.getElementById(id);
-      el.innerHTML = (valid ? "✅ " : "❌ ") + el.innerText.slice(2);
+      let baseText = el.getAttribute('data-base');
+      el.innerHTML = (valid ? "✅ " : "❌ ") + baseText;
       el.className = valid ? "text-green-600" : "text-gray-500";
     }
 
