@@ -24,10 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $update_stmt->execute();
 
         // Send Verification Link Email
-        $verify_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/verify_account.php?token=$token&email=" . urlencode($email);
-        $subject = "Verify Your J3RS Account";
-        $body = "<h1>Almost there!</h1><p>Please click the link below to verify your account:</p><p><a href='$verify_link'>$verify_link</a></p><p>This link will expire in 24 hours.</p>";
-
+$current_dir = str_replace('\\', '/', dirname($_SERVER['PHP_SELF']));
+$verify_link = "http://" . $_SERVER['HTTP_HOST'] . rtrim($current_dir, '/') . "/verify_account.php?token=$token&email=" . urlencode($email);
+$subject = "Verify Your J3RS Account";
+$body = "<h1>Almost there!</h1><p>Please click the link below to verify your account:</p><p><a href='$verify_link'>$verify_link</a></p><p>This link will expire in 24 hours.</p>";
         if (send_email($email, $subject, $body)) {
             $success = "OTP verified! A verification link has been sent to your email. Please click it to activate your account.";
         } else {

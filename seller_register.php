@@ -25,13 +25,46 @@ $form = [
 ];
 
 if ($isLoggedIn) {
-    $userPrefillStmt = $conn->prepare("SELECT username, email FROM user WHERE user_id = ? LIMIT 1");
+    $userPrefillStmt = $conn->prepare("
+        SELECT u.username, u.email, u.role_id, 
+               c.full_name as customer_name, c.contact_number as customer_contact
+        FROM user u 
+        LEFT JOIN customer c ON u.user_id = c.user_id
+        WHERE u.user_id = ? LIMIT 1
+    ");
     $userPrefillStmt->bind_param("i", $currentUserId);
     $userPrefillStmt->execute();
     $prefill = $userPrefillStmt->get_result()->fetch_assoc();
+    
     if ($prefill) {
-        $form['full_name'] = (string) ($prefill['username'] ?? '');
+        $form['full_name'] = (string) ($prefill['customer_name'] ?? $prefill['username'] ?? '');
         $form['email'] = (string) ($prefill['email'] ?? '');
+        $form['contact_number'] = (string) ($prefill['customer_contact'] ?? '');
+        $currentRoleId = (int) ($prefill['role_id'] ?? 2);
+        
+        // Check if user already has seller application
+        $existingSellerStmt = $conn->prepare("SELECT seller_id, is_approved FROM seller WHERE user_id = ? LIMIT 1");
+        $existingSellerStmt->bind_param("i", $currentUserId);
+        $existingSellerStmt->execute();
+        $existingSeller = $existingSellerStmt->get_result()->fetch_assoc();
+        
+        if ($existingSeller) {
+            if ($existingSeller['is_approved'] == 1) {
+                $message = 'You are already an approved seller! You can switch between roles.';
+                $messageType = 'warning';
+                echo "<script>setTimeout(function(){ window.location.href = 'customer_profile.php'; }, 3000);</script>";
+            } elseif ($existingSeller['is_approved'] == 0) {
+                $message = 'You already have a pending seller application. Please wait for admin approval.';
+                $messageType = 'info';
+                echo "<script>setTimeout(function(){ window.location.href = 'customer_profile.php'; }, 3000);</script>";
+            }
+        }
+        
+        // If already dual role, redirect
+        if ($currentRoleId == 4) {
+            header("Location: customer_profile.php?msg=already_dual");
+            exit;
+        }
     }
 }
 
@@ -49,16 +82,16 @@ function save_upload(string $fieldName): array
     $original = (string) ($file['name'] ?? '');
     $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed, true)) {
-        return ['ok' => false, 'error' => 'Invalid image type for ' . $fieldName];
+        return ['ok' => false, 'error' => 'Invalid image type for ' . $fieldName . '. Allowed: JPG, PNG, WEBP'];
     }
 
     if ((int) ($file['size'] ?? 0) > 5 * 1024 * 1024) {
-        return ['ok' => false, 'error' => 'File too large for ' . $fieldName];
+        return ['ok' => false, 'error' => 'File too large for ' . $fieldName . '. Max 5MB'];
     }
 
     $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'seller_docs';
     if (!is_dir($dir)) {
-        return ['ok' => false, 'error' => 'Upload directory missing'];
+        mkdir($dir, 0777, true);
     }
 
     $fileName = $fieldName . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
@@ -100,10 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'All fields are required.';
             $messageType = 'error';
         } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
-            $message = 'Please provide a valid email.';
+            $message = 'Please provide a valid email address.';
             $messageType = 'error';
         } elseif (!ctype_digit($form['age']) || (int) $form['age'] < 18) {
-            $message = 'Seller age must be 18 or above.';
+            $message = 'Seller age must be 18 years or above.';
             $messageType = 'error';
         } elseif (!in_array($form['business_category'], ['Men', 'Women'], true)) {
             $message = 'Invalid business category selected.';
@@ -125,60 +158,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 try {
                     $conn->begin_transaction();
-                    $targetUserId = 0;
+                    $targetUserId = $currentUserId;
 
-                    if ($isLoggedIn) {
-                        $targetUserId = $currentUserId;
-                    } else {
-                        $existingUserStmt = $conn->prepare("SELECT user_id FROM user WHERE email = ? LIMIT 1");
-                        $existingUserStmt->bind_param("s", $form['email']);
-                        $existingUserStmt->execute();
-                        $existingUser = $existingUserStmt->get_result()->fetch_assoc();
-                        if ($existingUser) {
-                            throw new RuntimeException('An account with this email already exists. Please login first.');
-                        }
-
-                        $baseUsername = preg_replace('/[^a-z0-9]+/i', '', strtolower($form['full_name']));
-                        if ($baseUsername === '') {
-                            $baseUsername = 'seller';
-                        }
-                        $username = $baseUsername;
-                        $counter = 1;
-                        while (true) {
-                            $checkUserStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? LIMIT 1");
-                            $checkUserStmt->bind_param("s", $username);
-                            $checkUserStmt->execute();
-                            if ($checkUserStmt->get_result()->num_rows === 0) {
-                                break;
-                            }
-                            $counter++;
-                            $username = $baseUsername . $counter;
-                        }
-
-                        $temporaryPassword = bin2hex(random_bytes(8)) . 'A1!';
-                        $passwordHash = password_hash($temporaryPassword, PASSWORD_DEFAULT);
-                        $roleId = 4;
-                        $createUserStmt = $conn->prepare("INSERT INTO user (username, email, password, role_id, is_activated) VALUES (?, ?, ?, ?, 1)");
-                        $createUserStmt->bind_param("sssi", $username, $form['email'], $passwordHash, $roleId);
-                        $createUserStmt->execute();
-                        $targetUserId = (int) $conn->insert_id;
-
-                        $subject = "Your Seller Account Has Been Created";
-                        $body = "<p>Hello " . htmlspecialchars($form['full_name']) . ",</p>"
-                            . "<p>Your seller account has been created successfully.</p>"
-                            . "<p><strong>Username:</strong> " . htmlspecialchars($username) . "<br>"
-                            . "<strong>Temporary Password:</strong> " . htmlspecialchars($temporaryPassword) . "</p>"
-                            . "<p>Please login and change your password immediately.</p>";
-                        send_email($form['email'], $subject, $body);
-                    }
-
-                    $sellerExistsStmt = $conn->prepare("SELECT seller_id FROM seller WHERE user_id = ? LIMIT 1");
+                    // Check if user already has seller application
+                    $sellerExistsStmt = $conn->prepare("SELECT seller_id, is_approved FROM seller WHERE user_id = ? LIMIT 1");
                     $sellerExistsStmt->bind_param("i", $targetUserId);
                     $sellerExistsStmt->execute();
-                    if ($sellerExistsStmt->get_result()->num_rows > 0) {
-                        throw new RuntimeException('Seller registration already exists for this account.');
+                    $existingSeller = $sellerExistsStmt->get_result()->fetch_assoc();
+                    
+                    if ($existingSeller) {
+                        throw new RuntimeException('You already have a seller application. Please wait for admin approval.');
                     }
 
+                    // Update or insert customer data
                     $customerExistsStmt = $conn->prepare("SELECT customer_id FROM customer WHERE user_id = ? LIMIT 1");
                     $customerExistsStmt->bind_param("i", $targetUserId);
                     $customerExistsStmt->execute();
@@ -201,6 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $insertCustomerStmt->execute();
                     }
 
+                    // Store seller application data (role remains 2/Customer until approved)
                     $metadata = [
                         'full_name' => $form['full_name'],
                         'email' => $form['email'],
@@ -210,27 +203,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'business_permit_picture' => $permitUpload['path'],
                         'valid_id_picture' => $validIdUpload['path'],
                         'shop_image' => $shopUpload['path'],
+                        'registration_date' => date('Y-m-d H:i:s'),
+                        'application_type' => 'customer_upgrade'
                     ];
                     $shopDescription = json_encode($metadata);
 
+                    // FIXED: Added full_name to the INSERT statement
                     $insertSellerStmt = $conn->prepare("
-                        INSERT INTO seller (user_id, shop_name, shop_description, contact_number, is_approved)
-                        VALUES (?, ?, ?, ?, 0)
+                        INSERT INTO seller (user_id, full_name, shop_name, shop_description, contact_number, is_approved)
+                        VALUES (?, ?, ?, ?, ?, 0)
                     ");
-                    $insertSellerStmt->bind_param("isss", $targetUserId, $form['shop_name'], $shopDescription, $form['contact_number']);
+                    $insertSellerStmt->bind_param("issss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['contact_number']);
                     $insertSellerStmt->execute();
 
-                    $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = 4 WHERE user_id = ?");
-                    $updateRoleStmt->bind_param("i", $targetUserId);
-                    $updateRoleStmt->execute();
-
-                    if ($isLoggedIn) {
-                        $_SESSION['role_id'] = 4;
+                    // Send notification email to admin
+                    $adminEmails = ['admin@j3rs.com'];
+                    $subject = "New Seller Application - Customer Upgrade Request";
+                    $body = "
+                        <html>
+                        <head><style>body{font-family:Arial,sans-serif}</style></head>
+                        <body>
+                            <h2>New Customer to Seller Upgrade Request</h2>
+                            <p>A customer has applied to become a seller and is waiting for approval:</p>
+                            <p><strong>Full Name:</strong> " . htmlspecialchars($form['full_name']) . "<br>
+                            <strong>Shop Name:</strong> " . htmlspecialchars($form['shop_name']) . "<br>
+                            <strong>Email:</strong> " . htmlspecialchars($form['email']) . "<br>
+                            <strong>Contact:</strong> " . htmlspecialchars($form['contact_number']) . "</p>
+                            <p><strong>Application Type:</strong> Customer Upgrading to Dual Role</p>
+                            <p><strong>Will Become:</strong> Dual Role (Customer + Seller) (Role ID: 4)</p>
+                            <p>Please review the application in the admin panel.</p>
+                            <hr>
+                            <p><a href='http://localhost/INFO-ASSURANCE-GRP3/admin/admin_approvals.php'>View Pending Approvals</a></p>
+                        </body>
+                        </html>
+                    ";
+                    
+                    foreach ($adminEmails as $adminEmail) {
+                        send_email($adminEmail, $subject, $body);
                     }
 
                     $conn->commit();
-                    $message = 'Seller registration submitted successfully. Please wait for admin approval.';
+                    $message = 'Seller registration submitted successfully! Please wait for admin approval. You will be notified via email once approved.';
                     $messageType = 'success';
+                    
+                    if ($messageType === 'success') {
+                        $_SESSION['seller_application_pending'] = true;
+                        echo "<script>setTimeout(function(){ window.location.href = 'customer_profile.php'; }, 3000);</script>";
+                    }
                 } catch (Throwable $e) {
                     $conn->rollback();
                     $message = $e->getMessage();
@@ -245,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Seller Registration</title>
+  <title>Become a Seller - J3RS</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -265,84 +284,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="w-full max-w-3xl">
       <div class="text-center mb-8">
         <div class="w-24 h-24 rounded-full overflow-hidden mx-auto mb-6 shadow-lg border-4 border-white">
-          <img src="JERS-LOGO.png" alt="Logo" class="w-full h-full object-cover">
+          <img src="JERS-LOGO.png" alt="J3RS Logo" class="w-full h-full object-cover">
         </div>
-        <h1 class="text-3xl font-bold text-brand-900 mb-2">Seller Registration</h1>
-        <p class="text-brand-500">Complete your store details to register as a seller.</p>
+        <h1 class="text-3xl font-bold text-brand-900 mb-2">Become a Seller</h1>
+        <p class="text-brand-500">Upgrade your customer account to a seller account.</p>
+        <p class="text-sm text-gray-600 mt-2">Upon approval, your account will be upgraded to <strong>Dual Role</strong> (Customer + Seller).</p>
       </div>
 
       <?php if ($message !== ''): ?>
-        <div class="mb-4 p-3 rounded-lg text-sm font-medium <?php echo $messageType === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'; ?>">
+        <div class="mb-4 p-4 rounded-lg text-sm font-medium <?php echo $messageType === 'success' ? 'bg-green-100 text-green-700 border-l-4 border-green-500' : 'bg-red-100 text-red-700 border-l-4 border-red-500'; ?>">
+          <i class="fas <?php echo $messageType === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?> mr-2"></i>
           <?php echo htmlspecialchars($message); ?>
         </div>
       <?php endif; ?>
 
-      <div class="p-8 bg-white rounded-2xl shadow-xl">
-        <form method="POST" enctype="multipart/form-data" class="space-y-4">
-          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+      <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div class="bg-brand-900 text-white px-6 py-3">
+          <h2 class="font-semibold"><i class="fas fa-store mr-2"></i> Seller Application Form</h2>
+        </div>
+        
+        <div class="p-8">
+          <form method="POST" enctype="multipart/form-data" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block mb-1 font-medium">Full Name</label>
-              <input type="text" name="full_name" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['full_name']); ?>" required>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Full Name *</label>
+                <input type="text" name="full_name" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['full_name']); ?>" required>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Email Address *</label>
+                <input type="email" name="email" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['email']); ?>" required>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Contact Number *</label>
+                <input type="text" name="contact_number" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['contact_number']); ?>" required>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Age *</label>
+                <input type="number" min="18" name="age" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['age']); ?>" required>
+                <p class="text-xs text-gray-500 mt-1">Must be 18 years or older</p>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">TIN ID *</label>
+                <input type="text" name="tin_id" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['tin_id']); ?>" required>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Business Category *</label>
+                <select name="business_category" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" required>
+                  <option value="">Select category</option>
+                  <option value="Men" <?php echo $form['business_category'] === 'Men' ? 'selected' : ''; ?>>Men's Clothing</option>
+                  <option value="Women" <?php echo $form['business_category'] === 'Women' ? 'selected' : ''; ?>>Women's Clothing</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label class="block mb-1 font-medium">Email</label>
-              <input type="email" name="email" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['email']); ?>" required>
-            </div>
-            <div>
-              <label class="block mb-1 font-medium">Contact Number</label>
-              <input type="text" name="contact_number" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['contact_number']); ?>" required>
-            </div>
-            <div>
-              <label class="block mb-1 font-medium">Age</label>
-              <input type="number" min="18" name="age" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['age']); ?>" required>
-            </div>
-            <div>
-              <label class="block mb-1 font-medium">TIN ID</label>
-              <input type="text" name="tin_id" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['tin_id']); ?>" required>
-            </div>
-            <div>
-              <label class="block mb-1 font-medium">Business Category</label>
-              <select name="business_category" class="w-full p-3 border rounded-lg" required>
-                <option value="">Select category</option>
-                <option value="Men" <?php echo $form['business_category'] === 'Men' ? 'selected' : ''; ?>>Men Clothes</option>
-                <option value="Women" <?php echo $form['business_category'] === 'Women' ? 'selected' : ''; ?>>Women Clothes</option>
-              </select>
-            </div>
-          </div>
 
-          <div>
-            <label class="block mb-1 font-medium">Shop Name</label>
-            <input type="text" name="shop_name" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['shop_name']); ?>" required>
-          </div>
+            <div>
+              <label class="block mb-1 font-medium text-gray-700">Shop Name *</label>
+              <input type="text" name="shop_name" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['shop_name']); ?>" required>
+            </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label class="block mb-1 font-medium">Business Permit Picture</label>
-              <input type="file" name="business_permit_picture" class="w-full p-3 border rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Business Permit Picture *</label>
+                <input type="file" name="business_permit_picture" class="w-full p-2 border border-gray-300 rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
+                <p class="text-xs text-gray-500 mt-1">JPG, PNG, or WEBP (Max 5MB)</p>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Valid ID Picture *</label>
+                <input type="file" name="valid_id_picture" class="w-full p-2 border border-gray-300 rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
+                <p class="text-xs text-gray-500 mt-1">JPG, PNG, or WEBP (Max 5MB)</p>
+              </div>
+              <div>
+                <label class="block mb-1 font-medium text-gray-700">Shop Image/Logo *</label>
+                <input type="file" name="shop_image" class="w-full p-2 border border-gray-300 rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
+                <p class="text-xs text-gray-500 mt-1">JPG, PNG, or WEBP (Max 5MB)</p>
+              </div>
             </div>
-            <div>
-              <label class="block mb-1 font-medium">Valid ID Picture</label>
-              <input type="file" name="valid_id_picture" class="w-full p-3 border rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
-            </div>
-            <div>
-              <label class="block mb-1 font-medium">Shop Image</label>
-              <input type="file" name="shop_image" class="w-full p-3 border rounded-lg" accept=".jpg,.jpeg,.png,.webp" required>
-            </div>
-          </div>
 
-          <div class="flex gap-3 pt-2">
-            <?php if ($fromProfile || $isLoggedIn): ?>
-              <a href="customer_profile.php" class="px-4 py-3 border rounded-xl text-brand-900">Back to Profile</a>
-            <?php else: ?>
-              <a href="landing.php" class="px-4 py-3 border rounded-xl text-brand-900">Back to Landing</a>
-            <?php endif; ?>
-            <button type="submit" class="px-6 py-3 bg-brand-900 text-white rounded-xl">Submit Registration</button>
-          </div>
-        </form>
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mt-4">
+              <p class="text-sm text-blue-800">
+                <i class="fas fa-info-circle mr-2"></i>
+                <strong>Note:</strong> Your account will remain as a <strong>Customer</strong> until your seller application is approved. 
+                Once approved, your account will be upgraded to <strong>Dual Role</strong>, allowing you to switch between customer and seller modes.
+              </p>
+            </div>
+
+            <div class="flex gap-3 pt-4">
+              <a href="<?php echo $fromProfile || $isLoggedIn ? 'customer_profile.php' : 'landing.php'; ?>" class="px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i> Back
+              </a>
+              <button type="submit" class="flex-1 px-6 py-3 bg-brand-900 text-white rounded-xl hover:bg-brand-500 transition-colors font-semibold">
+                <i class="fas fa-paper-plane mr-2"></i> Submit Application
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/js/all.min.js"></script>
 </body>
 </html>
