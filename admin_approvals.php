@@ -1,9 +1,239 @@
+<?php
+require_once 'admin/db.connect.php';
+require_once 'admin/email.helper.php';
+
+/* =========================
+   HANDLE APPROVE / REJECT
+========================= */
+if (isset($_GET['action'], $_GET['id'])) {
+    $sellerId = (int) $_GET['id'];
+    $action = $_GET['action'];
+
+    if ($action === 'approve') {
+        // Get seller details before approving
+        $sellerStmt = $conn->prepare("
+            SELECT s.*, u.user_id, u.username, u.email 
+            FROM seller s 
+            JOIN user u ON s.user_id = u.user_id 
+            WHERE s.seller_id = ?
+        ");
+        $sellerStmt->bind_param("i", $sellerId);
+        $sellerStmt->execute();
+        $seller = $sellerStmt->get_result()->fetch_assoc();
+        
+        if ($seller) {
+            // Update approval status
+            $stmt = $conn->prepare("UPDATE seller SET is_approved = 1 WHERE seller_id = ?");
+            $stmt->bind_param("i", $sellerId);
+            $stmt->execute();
+            
+            // Generate temporary password
+            $tempPassword = bin2hex(random_bytes(6));
+            $passwordHash = password_hash($tempPassword, PASSWORD_DEFAULT);
+            
+            // Update user password and ensure account is activated
+            $updatePassStmt = $conn->prepare("UPDATE user SET password = ?, is_activated = 1, is_locked = 0, attempts = 0 WHERE user_id = ?");
+            $updatePassStmt->bind_param("si", $passwordHash, $seller['user_id']);
+            $updatePassStmt->execute();
+            
+            // Send approval email to seller
+            $subject = "Your Seller Account Has Been Approved!";
+            $body = "
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        .container { padding: 20px; background-color: #fdf2f6; }
+                        .content { background-color: white; padding: 20px; border-radius: 10px; }
+                        .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
+                        .credentials { background-color: #f9dbe5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                        .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                        .warning { color: #dc2626; font-size: 14px; margin-top: 10px; }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='content'>
+                            <div class='header'>Welcome to J3RS Marketplace!</div>
+                            <p>Dear " . htmlspecialchars($seller['shop_name']) . ",</p>
+                            <p>Congratulations! Your seller account has been approved by our admin team.</p>
+                            <div class='credentials'>
+                                <p><strong>Your Account Credentials:</strong></p>
+                                <p><strong>Username:</strong> " . htmlspecialchars($seller['username']) . "<br>
+                                <strong>Temporary Password:</strong> " . htmlspecialchars($tempPassword) . "</p>
+                                <p class='warning'><strong>Important:</strong> Please login and change your password immediately for security purposes.</p>
+                            </div>
+                            <p>Click the button below to login to your seller account:</p>
+                            <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
+                            <p>Once logged in, you can:</p>
+                            <ul>
+                                <li>Change your password in your profile settings</li>
+                                <li>Start adding products to your store</li>
+                                <li>Manage your orders and inventory</li>
+                                <li>Update your shop information</li>
+                            </ul>
+                            <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+                            <p>Best regards,<br>J3RS Marketplace Team</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            ";
+            
+            send_email($seller['email'], $subject, $body);
+        }
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            echo json_encode(['success' => true, 'message' => 'Seller approved successfully']);
+            exit;
+        }
+    }
+
+    if ($action === 'reject') {
+        // Get seller details before rejecting to send email
+        $sellerStmt = $conn->prepare("
+            SELECT s.*, u.user_id, u.username, u.email 
+            FROM seller s 
+            JOIN user u ON s.user_id = u.user_id 
+            WHERE s.seller_id = ?
+        ");
+        $sellerStmt->bind_param("i", $sellerId);
+        $sellerStmt->execute();
+        $seller = $sellerStmt->get_result()->fetch_assoc();
+        
+        if ($seller) {
+            // Send rejection email
+            $subject = "Seller Application Update - J3RS Marketplace";
+            $body = "
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        .container { padding: 20px; background-color: #fdf2f6; }
+                        .content { background-color: white; padding: 20px; border-radius: 10px; }
+                        .header { color: #dc2626; font-size: 24px; margin-bottom: 20px; }
+                        .message-box { background-color: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; }
+                        .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }
+                    </style>
+                </head>
+                <body>
+                    <div class='container'>
+                        <div class='content'>
+                            <div class='header'>Application Status Update</div>
+                            <p>Dear " . htmlspecialchars($seller['shop_name']) . ",</p>
+                            <div class='message-box'>
+                                <p>Thank you for your interest in becoming a seller at J3RS Marketplace.</p>
+                                <p>After careful review of your application, we regret to inform you that your seller application has not been approved at this time.</p>
+                                <p><strong>Reason:</strong> Your application does not meet the minimum requirements for seller registration.</p>
+                                <p>Common reasons for rejection include:</p>
+                                <ul>
+                                    <li>Incomplete or invalid documentation</li>
+                                    <li>Business permit or valid ID not clearly visible</li>
+                                    <li>Information provided does not match submitted documents</li>
+                                    <li>Age requirement not met</li>
+                                </ul>
+                                <p>You may reapply after ensuring all requirements are properly met.</p>
+                            </div>
+                            <p>If you have any questions, please contact our support team for assistance.</p>
+                            <p>Best regards,<br>J3RS Marketplace Team</p>
+                            <div class='footer'>
+                                <p>This is an automated message. Please do not reply to this email.</p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            ";
+            
+            send_email($seller['email'], $subject, $body);
+            
+            // Delete seller record
+            $stmt = $conn->prepare("DELETE FROM seller WHERE seller_id = ?");
+            $stmt->bind_param("i", $sellerId);
+            $stmt->execute();
+        }
+        
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            echo json_encode(['success' => true, 'message' => 'Seller rejected successfully']);
+            exit;
+        }
+    }
+
+    if (!isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+        header("Location: admin_approvals.php");
+        exit;
+    }
+}
+
+// Handle AJAX request for getting seller details - FIXED QUERY
+if (isset($_GET['get_details']) && isset($_GET['id'])) {
+    $sellerId = (int) $_GET['id'];
+    
+    $query = "
+        SELECT s.*, u.username, u.email 
+        FROM seller s 
+        JOIN user u ON s.user_id = u.user_id 
+        WHERE s.seller_id = ?
+    ";
+    
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $sellerId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $seller = $result->fetch_assoc();
+    
+    if ($seller) {
+        $metadata = json_decode($seller['shop_description'], true);
+        
+        $response = [
+            'success' => true,
+            'seller_id' => $seller['seller_id'],
+            'user_id' => $seller['user_id'],
+            'username' => $seller['username'],
+            'email' => $seller['email'],
+            'full_name' => $seller['full_name'] ?? ($metadata['full_name'] ?? $seller['username']),
+            'shop_name' => $seller['shop_name'],
+            'shop_address' => $seller['shop_address'],
+            'contact_number' => $seller['contact_number'],
+            'is_approved' => $seller['is_approved'],
+            'created_at' => $seller['created_at'],
+            'metadata' => $metadata,
+            'images' => [
+                'business_permit' => $metadata['business_permit_picture'] ?? null,
+                'valid_id' => $metadata['valid_id_picture'] ?? null,
+                'shop_image' => $metadata['shop_image'] ?? null
+            ]
+        ];
+        
+        header('Content-Type: application/json');
+        echo json_encode($response);
+    } else {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Seller not found']);
+    }
+    exit;
+}
+
+/* =========================
+   FETCH SELLERS
+========================= */
+$query = "
+SELECT s.*, u.username, u.email
+FROM seller s
+JOIN user u ON s.user_id = u.user_id
+WHERE s.is_approved = 0
+ORDER BY s.created_at DESC
+";
+
+$result = $conn->query($query);
+?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>Seller Approvals</title>
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="sidebar.css">
 
@@ -14,6 +244,7 @@ body {
   background: #fdf2f6;
 }
 
+/* ===== MAIN CONTAINER ===== */
 .container {
   margin-left: 240px;
   padding: 20px;
@@ -30,6 +261,7 @@ h1 {
   margin-bottom: 5px;
 }
 
+/* ===== CARD ===== */
 .card {
   background: white;
   padding: 20px;
@@ -37,6 +269,7 @@ h1 {
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
+/* ===== TABLE ===== */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -54,9 +287,9 @@ th {
   color: #610C27;
   font-size: 13px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
+/* ===== BUTTONS ===== */
 .btn {
   padding: 6px 12px;
   border-radius: 6px;
@@ -64,8 +297,9 @@ th {
   cursor: pointer;
   font-size: 12px;
   font-weight: bold;
-  transition: 0.2s;
+  text-decoration: none;
   margin-right: 5px;
+  display: inline-block;
 }
 
 .btn-view {
@@ -83,34 +317,7 @@ th {
   color: #991b1b;
 }
 
-.btn:hover {
-  opacity: 0.8;
-}
-
-.pagination {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 20px;
-  gap: 5px;
-}
-
-.page-link {
-  padding: 5px 10px;
-  border: 1px solid #ddd;
-  background: white;
-  color: #610C27;
-  text-decoration: none;
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.page-link.active {
-  background: #610C27;
-  color: white;
-  border-color: #610C27;
-}
-
-/* MODAL STYLES */
+/* ===== MODAL STYLES ===== */
 .modal {
   display: none;
   position: fixed;
@@ -119,72 +326,216 @@ th {
   top: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.5);
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-content {
-  background-color: white;
-  margin: 10% auto;
-  padding: 30px;
-  border-radius: 12px;
-  width: 500px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  background: white;
+  margin: 5% auto;
+  padding: 0;
+  width: 700px;
+  border-radius: 16px;
   position: relative;
+  max-height: 85%;
+  overflow-y: auto;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .modal-header {
+  padding: 20px 25px;
   border-bottom: 1px solid #eee;
-  padding-bottom: 15px;
-  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .modal-header h2 {
   margin: 0;
   color: #610C27;
+  font-size: 20px;
 }
 
 .close-btn {
-  position: absolute;
-  right: 20px;
-  top: 20px;
-  font-size: 24px;
+  font-size: 28px;
   cursor: pointer;
-  color: #666;
+  color: #999;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #610C27;
+}
+
+.modal-body {
+  padding: 25px;
 }
 
 .modal-footer {
-  margin-top: 25px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  padding: 15px 25px;
+  border-top: 1px solid #eee;
+  text-align: right;
 }
 
-.modal-body p {
-  margin: 10px 0;
+/* Confirmation Modal */
+.confirm-modal .modal-content {
+  width: 450px;
+}
+
+.confirm-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+.confirm-icon.approve {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.confirm-icon.reject {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.confirm-message {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.confirm-message h3 {
+  font-size: 20px;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.confirm-message p {
+  color: #666;
   font-size: 14px;
 }
 
-.modal-body strong {
-  color: #610C27;
-  width: 120px;
-  display: inline-block;
+.confirm-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
 }
 
-.reason-input {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
+.confirm-buttons button {
+  padding: 10px 20px;
   border-radius: 8px;
-  margin-top: 10px;
-  resize: vertical;
-  min-height: 80px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.btn-confirm-approve {
+  background: #610C27;
+  color: white;
+}
+
+.btn-confirm-approve:hover {
+  background: #a61b4a;
+}
+
+.btn-confirm-reject {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-confirm-reject:hover {
+  background: #b91c1c;
+}
+
+.btn-cancel {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.btn-cancel:hover {
+  background: #d1d5db;
+}
+
+/* Other styles */
+.image-preview {
+  max-width: 200px;
+  max-height: 200px;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #610C27;
+  margin-top: 15px;
+  margin-bottom: 10px;
+  border-bottom: 2px solid #f9dbe5;
+  padding-bottom: 5px;
+}
+
+.success-popup {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #10b981;
+  color: white;
+  padding: 15px 20px;
+  border-radius: 8px;
+  z-index: 1100;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.loading {
+  text-align: center;
+  padding: 20px;
+  color: #610C27;
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 16px;
 }
 </style>
 </head>
 
 <body>
 
-<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
@@ -192,98 +543,85 @@ th {
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="admin_approvals.php" class="<?php echo $current_page == 'admin_approvals.php' ? 'active' : ''; ?>"><i class="fas fa-user-check"></i><span class="text">Approvals</span></a>
-  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
-  
-  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
+  <a href="admin_dashboard.php"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_users.php"><i class="fas fa-users"></i><span class="text">Users</span></a>
+  <a href="admin_product.php"><i class="fas fa-box"></i><span class="text">Products</span></a>
+  <a href="admin_orders.php"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_reports.php"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="admin_approvals.php" class="active"><i class="fas fa-user-check"></i><span class="text">Approvals</span></a>
+  <a href="admin_settings.php"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
 </div>
 
-<script>
-function toggleSidebar() {
-  const sidebar = document.getElementById("sidebar");
-  const main = document.getElementById("main");
-  if (sidebar) sidebar.classList.toggle("collapsed");
-  if (main) main.classList.toggle("full");
-}
-</script>
-
-<!-- CONTENT -->
+<!-- MAIN CONTENT -->
 <div class="container" id="main">
 
 <h1>Seller Approvals</h1>
 <p>Review and manage new seller applications.</p>
 
 <div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th>Seller Name</th>
-        <th>Shop Name</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Juan Dela Cruz</td>
-        <td>Juan's Clothing</td>
-        <td>
-          <button class="btn btn-view" onclick="openViewModal('Juan Dela Cruz', '09123456789', 'juan@example.com', 'Juan\'s Clothing', 'Individual', '123-456-789')">View</button>
-          <button class="btn btn-approve" onclick="openAcceptModal('Juan Dela Cruz')">Approve</button>
-          <button class="btn btn-reject" onclick="openDeclineModal('Juan Dela Cruz')">Reject</button>
-        </td>
-      </tr>
-      <tr>
-        <td>Maria Clara</td>
-        <td>Clara Fashion</td>
-        <td>
-          <button class="btn btn-view" onclick="openViewModal('Maria Clara', '09987654321', 'maria@example.com', 'Clara Fashion', 'Business', '987-654-321')">View</button>
-          <button class="btn btn-approve" onclick="openAcceptModal('Maria Clara')">Approve</button>
-          <button class="btn btn-reject" onclick="openDeclineModal('Maria Clara')">Reject</button>
-        </td>
-      </tr>
-      <tr>
-        <td>Jose Rizal</td>
-        <td>Traditional Clothes</td>
-        <td>
-          <button class="btn btn-view" onclick="openViewModal('Jose Rizal', '09112223334', 'jose@example.com', 'Traditional Clothes', 'Individual', '111-222-333')">View</button>
-          <button class="btn btn-approve" onclick="openAcceptModal('Jose Rizal')">Approve</button>
-          <button class="btn btn-reject" onclick="openDeclineModal('Jose Rizal')">Reject</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+<?php if ($result && $result->num_rows > 0): ?>
+<table>
+<thead>
+<tr>
+  <th>Seller Name</th>
+  <th>Shop Name</th>
+  <th>Shop Address</th>
+  <th>Contact Number</th>
+  <th>Actions</th>
+</tr>
+</thead>
 
-  <!-- PAGINATION -->
-  <div class="pagination">
-    <a href="#" class="page-link">Previous</a>
-    <a href="#" class="page-link active">1</a>
-    <a href="#" class="page-link">2</a>
-    <a href="#" class="page-link">Next</a>
-  </div>
+<tbody>
+<?php while ($row = $result->fetch_assoc()): 
+    $meta = json_decode($row['shop_description'], true);
+?>
+<tr>
+  <td>
+    <?php echo htmlspecialchars($row['full_name'] ?? ($meta['full_name'] ?? $row['username'])); ?>
+  </td>
+  <td>
+    <?php echo htmlspecialchars($row['shop_name']); ?>
+  </td>
+  <td>
+    <?php echo htmlspecialchars(substr($row['shop_address'], 0, 50)) . (strlen($row['shop_address']) > 50 ? '...' : ''); ?>
+  </td>
+  <td>
+    <?php echo htmlspecialchars($row['contact_number']); ?>
+  </td>
+  <td>
+    <button class="btn btn-view" onclick="openView(<?php echo $row['seller_id']; ?>)">
+      <i class="fas fa-eye"></i> View
+    </button>
+    <button class="btn btn-approve" onclick="showApproveConfirm(<?php echo $row['seller_id']; ?>)">
+      <i class="fas fa-check"></i> Approve
+    </button>
+    <button class="btn btn-reject" onclick="showRejectConfirm(<?php echo $row['seller_id']; ?>)">
+      <i class="fas fa-times"></i> Reject
+    </button>
+  </td>
+</tr>
+<?php endwhile; ?>
+</tbody>
+</table>
+<?php else: ?>
+<div class="no-data">
+  <i class="fas fa-inbox" style="font-size: 48px; margin-bottom: 10px; display: block;"></i>
+  No pending seller approvals at this time.
 </div>
-
+<?php endif; ?>
+</div>
 </div>
 
 <!-- VIEW MODAL -->
 <div id="viewModal" class="modal">
   <div class="modal-content">
-    <span class="close-btn" onclick="closeModal('viewModal')">&times;</span>
     <div class="modal-header">
-      <h2>Seller Details</h2>
+      <h2><i class="fas fa-store"></i> Seller Application Details</h2>
+      <span class="close-btn" onclick="closeModal('viewModal')">&times;</span>
     </div>
-    <div class="modal-body">
-      <p><strong>Name:</strong> <span id="viewName"></span></p>
-      <p><strong>Contact:</strong> <span id="viewContact"></span></p>
-      <p><strong>Email:</strong> <span id="viewEmail"></span></p>
-      <p><strong>Shop Name:</strong> <span id="viewShop"></span></p>
-      <p><strong>Seller Type:</strong> <span id="viewType"></span></p>
-      <p><strong>TIN Number:</strong> <span id="viewTin"></span></p>
+    <div class="modal-body" id="modalBody">
+      <div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading seller details...</div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-view" onclick="closeModal('viewModal')">Close</button>
@@ -291,86 +629,224 @@ function toggleSidebar() {
   </div>
 </div>
 
-<!-- ACCEPT MODAL -->
-<div id="acceptModal" class="modal">
+<!-- APPROVE CONFIRMATION MODAL -->
+<div id="approveModal" class="modal confirm-modal">
   <div class="modal-content">
-    <span class="close-btn" onclick="closeModal('acceptModal')">&times;</span>
     <div class="modal-header">
-      <h2>Accept Seller</h2>
+      <h2>Confirm Approval</h2>
+      <span class="close-btn" onclick="closeModal('approveModal')">&times;</span>
     </div>
     <div class="modal-body">
-      <p>Are you sure you want to accept <strong><span id="acceptName"></span></strong> as a seller?</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-view" onclick="closeModal('acceptModal')">Cancel</button>
-      <button class="btn btn-approve" onclick="confirmAccept()">Accept</button>
+      <div class="confirm-icon approve">
+        <i class="fas fa-check-circle"></i>
+      </div>
+      <div class="confirm-message">
+        <h3>Approve Seller Application?</h3>
+        <p>Are you sure you want to approve this seller? An email will be sent to the seller with their login credentials.</p>
+      </div>
+      <div class="confirm-buttons">
+        <button class="btn-cancel" onclick="closeModal('approveModal')">Cancel</button>
+        <button class="btn-confirm-approve" id="confirmApproveBtn">Yes, Approve</button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- DECLINE MODAL -->
-<div id="declineModal" class="modal">
+<!-- REJECT CONFIRMATION MODAL -->
+<div id="rejectModal" class="modal confirm-modal">
   <div class="modal-content">
-    <span class="close-btn" onclick="closeModal('declineModal')">&times;</span>
     <div class="modal-header">
-      <h2>Decline Seller</h2>
+      <h2>Confirm Rejection</h2>
+      <span class="close-btn" onclick="closeModal('rejectModal')">&times;</span>
     </div>
     <div class="modal-body">
-      <p>Reason to decline <strong><span id="declineName"></span></strong>:</p>
-      <textarea class="reason-input" id="declineReason" placeholder="Enter reason here..."></textarea>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-view" onclick="closeModal('declineModal')">Cancel</button>
-      <button class="btn btn-reject" onclick="confirmDecline()">Submit</button>
+      <div class="confirm-icon reject">
+        <i class="fas fa-times-circle"></i>
+      </div>
+      <div class="confirm-message">
+        <h3>Reject Seller Application?</h3>
+        <p>Are you sure you want to reject this seller? An email will be sent to inform them about the rejection.</p>
+      </div>
+      <div class="confirm-buttons">
+        <button class="btn-cancel" onclick="closeModal('rejectModal')">Cancel</button>
+        <button class="btn-confirm-reject" id="confirmRejectBtn">Yes, Reject</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-function openViewModal(name, contact, email, shop, type, tin) {
-  document.getElementById('viewName').innerText = name;
-  document.getElementById('viewContact').innerText = contact;
-  document.getElementById('viewEmail').innerText = email;
-  document.getElementById('viewShop').innerText = shop;
-  document.getElementById('viewType').innerText = type;
-  document.getElementById('viewTin').innerText = tin;
-  document.getElementById('viewModal').style.display = 'block';
+let currentSellerId = null;
+
+function openView(sellerId) {
+    document.getElementById('modalBody').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading seller details...</div>';
+    document.getElementById('viewModal').style.display = 'block';
+    
+    fetch(`admin_approvals.php?get_details=1&id=${sellerId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const meta = data.metadata;
+                
+                let html = `
+                    <div class="section-title">
+                        <i class="fas fa-user"></i> Personal Information
+                    </div>
+                    <p><strong>Full Name:</strong> ${escapeHtml(data.full_name)}</p>
+                    <p><strong>Email:</strong> ${escapeHtml(data.email)}</p>
+                    <p><strong>Contact Number:</strong> ${escapeHtml(data.contact_number)}</p>
+                    <p><strong>Age:</strong> ${escapeHtml(meta.age || 'N/A')}</p>
+                    <p><strong>TIN ID:</strong> ${escapeHtml(meta.tin_id || 'N/A')}</p>
+                    
+                    <div class="section-title">
+                        <i class="fas fa-building"></i> Business Information
+                    </div>
+                    <p><strong>Shop Name:</strong> ${escapeHtml(data.shop_name)}</p>
+                    <p><strong>Shop Address:</strong> ${escapeHtml(data.shop_address)}</p>
+                    <p><strong>Business Category:</strong> ${escapeHtml(meta.business_category || 'N/A')}</p>
+                    
+                    <div class="section-title">
+                        <i class="fas fa-file-alt"></i> Submitted Documents
+                    </div>
+                `;
+                
+                if (meta.business_permit_picture) {
+                    html += `<p><strong>Business Permit:</strong><br><img src="${escapeHtml(meta.business_permit_picture)}" class="image-preview" alt="Business Permit" onerror="this.style.display='none'"></p>`;
+                } else {
+                    html += `<p><strong>Business Permit:</strong> No image uploaded</p>`;
+                }
+                
+                if (meta.valid_id_picture) {
+                    html += `<p><strong>Valid ID:</strong><br><img src="${escapeHtml(meta.valid_id_picture)}" class="image-preview" alt="Valid ID" onerror="this.style.display='none'"></p>`;
+                } else {
+                    html += `<p><strong>Valid ID:</strong> No image uploaded</p>`;
+                }
+                
+                if (meta.shop_image) {
+                    html += `<p><strong>Shop Image:</strong><br><img src="${escapeHtml(meta.shop_image)}" class="image-preview" alt="Shop Image" onerror="this.style.display='none'"></p>`;
+                } else {
+                    html += `<p><strong>Shop Image:</strong> No image uploaded</p>`;
+                }
+                
+                document.getElementById('modalBody').innerHTML = html;
+            } else {
+                document.getElementById('modalBody').innerHTML = `<div class="no-data">${escapeHtml(data.message)}</div>`;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('modalBody').innerHTML = '<div class="no-data">Error loading seller details. Please try again.</div>';
+        });
 }
 
-function openAcceptModal(name) {
-  document.getElementById('acceptName').innerText = name;
-  document.getElementById('acceptModal').style.display = 'block';
+function showApproveConfirm(sellerId) {
+    currentSellerId = sellerId;
+    document.getElementById('approveModal').style.display = 'block';
 }
 
-function openDeclineModal(name) {
-  document.getElementById('declineName').innerText = name;
-  document.getElementById('declineModal').style.display = 'block';
+function showRejectConfirm(sellerId) {
+    currentSellerId = sellerId;
+    document.getElementById('rejectModal').style.display = 'block';
 }
 
-function closeModal(id) {
-  document.getElementById(id).style.display = 'none';
+document.getElementById('confirmApproveBtn')?.addEventListener('click', function() {
+    if (currentSellerId) {
+        closeModal('approveModal');
+        processApprove(currentSellerId);
+    }
+});
+
+document.getElementById('confirmRejectBtn')?.addEventListener('click', function() {
+    if (currentSellerId) {
+        closeModal('rejectModal');
+        processReject(currentSellerId);
+    }
+});
+
+function processApprove(sellerId) {
+    showSuccessPopup('Processing approval...');
+    
+    fetch(`admin_approvals.php?action=approve&id=${sellerId}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSuccessPopup('✅ Seller approved successfully! An email has been sent.');
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            showSuccessPopup('❌ Error approving seller', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showSuccessPopup('❌ Error approving seller', 'error');
+    });
 }
 
-function confirmAccept() {
-  alert('Seller accepted successfully!');
-  closeModal('acceptModal');
+function processReject(sellerId) {
+    showSuccessPopup('Processing rejection...');
+    
+    fetch(`admin_approvals.php?action=reject&id=${sellerId}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSuccessPopup('✅ Seller rejected successfully. Email notification sent.');
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            showSuccessPopup('❌ Error rejecting seller', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showSuccessPopup('❌ Error rejecting seller', 'error');
+    });
 }
 
-function confirmDecline() {
-  const reason = document.getElementById('declineReason').value;
-  if(!reason) {
-    alert('Please provide a reason.');
-    return;
-  }
-  alert('Seller declined. Reason: ' + reason);
-  closeModal('declineModal');
+function showSuccessPopup(message, type = 'success') {
+    const popup = document.createElement('div');
+    popup.className = 'success-popup';
+    popup.style.background = type === 'error' ? '#dc2626' : '#10b981';
+    popup.innerHTML = `<i class="fas ${type === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'}" style="margin-right: 10px;"></i>${message}`;
+    document.body.appendChild(popup);
+    
+    setTimeout(() => {
+        popup.remove();
+    }, 3000);
 }
 
-// Close modal when clicking outside
-window.onclick = function(event) {
-  if (event.target.className === 'modal') {
-    event.target.style.display = 'none';
-  }
+function closeModal(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
+
+function toggleSidebar() {
+    document.getElementById("sidebar").classList.toggle("collapsed");
+    document.getElementById("main").classList.toggle("full");
+}
+
+window.onclick = function(e) {
+    if (e.target.classList.contains('modal')) {
+        e.target.style.display = 'none';
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 

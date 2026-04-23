@@ -22,6 +22,7 @@ $form = [
     'tin_id' => '',
     'business_category' => '',
     'shop_name' => '',
+    'shop_address' => '',
 ];
 
 if ($isLoggedIn) {
@@ -58,7 +59,7 @@ function save_upload(string $fieldName): array
 
     $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'seller_docs';
     if (!is_dir($dir)) {
-        return ['ok' => false, 'error' => 'Upload directory missing'];
+        mkdir($dir, 0777, true);
     }
 
     $fileName = $fieldName . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
@@ -83,10 +84,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form['tin_id'] = trim($_POST['tin_id'] ?? '');
         $form['business_category'] = trim($_POST['business_category'] ?? '');
         $form['shop_name'] = trim($_POST['shop_name'] ?? '');
+        $form['shop_address'] = trim($_POST['shop_address'] ?? '');
 
         $required = [
             $form['full_name'], $form['email'], $form['contact_number'], $form['age'],
-            $form['tin_id'], $form['business_category'], $form['shop_name']
+            $form['tin_id'], $form['business_category'], $form['shop_name'], $form['shop_address']
         ];
         $hasEmpty = false;
         foreach ($required as $value) {
@@ -157,19 +159,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $temporaryPassword = bin2hex(random_bytes(8)) . 'A1!';
                         $passwordHash = password_hash($temporaryPassword, PASSWORD_DEFAULT);
-                        $roleId = 4;
+                        // Set role_id to 3 (Seller)
+                        $roleId = 3;
                         $createUserStmt = $conn->prepare("INSERT INTO user (username, email, password, role_id, is_activated) VALUES (?, ?, ?, ?, 1)");
                         $createUserStmt->bind_param("sssi", $username, $form['email'], $passwordHash, $roleId);
                         $createUserStmt->execute();
                         $targetUserId = (int) $conn->insert_id;
-
-                        $subject = "Your Seller Account Has Been Created";
-                        $body = "<p>Hello " . htmlspecialchars($form['full_name']) . ",</p>"
-                            . "<p>Your seller account has been created successfully.</p>"
-                            . "<p><strong>Username:</strong> " . htmlspecialchars($username) . "<br>"
-                            . "<strong>Temporary Password:</strong> " . htmlspecialchars($temporaryPassword) . "</p>"
-                            . "<p>Please login and change your password immediately.</p>";
-                        send_email($form['email'], $subject, $body);
                     }
 
                     $sellerExistsStmt = $conn->prepare("SELECT seller_id FROM seller WHERE user_id = ? LIMIT 1");
@@ -179,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new RuntimeException('Seller registration already exists for this account.');
                     }
 
+                    // Store full name and other metadata in shop_description JSON field
                     $metadata = [
                         'full_name' => $form['full_name'],
                         'email' => $form['email'],
@@ -188,25 +184,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'business_permit_picture' => $permitUpload['path'],
                         'valid_id_picture' => $validIdUpload['path'],
                         'shop_image' => $shopUpload['path'],
+                        'registration_date' => date('Y-m-d H:i:s')
                     ];
                     $shopDescription = json_encode($metadata);
 
+                    // Insert into seller table with full_name column
                     $insertSellerStmt = $conn->prepare("
-                        INSERT INTO seller (user_id, shop_name, shop_description, contact_number, is_approved)
-                        VALUES (?, ?, ?, ?, 0)
+                        INSERT INTO seller (user_id, full_name, shop_name, shop_description, shop_address, contact_number, is_approved)
+                        VALUES (?, ?, ?, ?, ?, ?, 0)
                     ");
-                    $insertSellerStmt->bind_param("isss", $targetUserId, $form['shop_name'], $shopDescription, $form['contact_number']);
+                    $insertSellerStmt->bind_param("isssss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['shop_address'], $form['contact_number']);
                     $insertSellerStmt->execute();
 
-                    $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = 4 WHERE user_id = ?");
+                    // Ensure role is set to Seller (3)
+                    $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = 3 WHERE user_id = ?");
                     $updateRoleStmt->bind_param("i", $targetUserId);
                     $updateRoleStmt->execute();
 
                     if ($isLoggedIn) {
-                        $_SESSION['role_id'] = 4;
+                        $_SESSION['role_id'] = 3;
                     }
 
                     $conn->commit();
+                    
+                    // Clear form fields after successful registration
+                    $form = [
+                        'full_name' => '',
+                        'email' => '',
+                        'contact_number' => '',
+                        'age' => '',
+                        'tin_id' => '',
+                        'business_category' => '',
+                        'shop_name' => '',
+                        'shop_address' => '',
+                    ];
+                    
                     $message = 'Seller registration submitted successfully. Please wait for admin approval.';
                     $messageType = 'success';
                 } catch (Throwable $e) {
@@ -239,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </script>
 </head>
 <body class="bg-custombg">
-  <div class="min-h-[80vh] flex items-center justify-center py-12">
+  <div class="min-h-screen flex items-center justify-center py-12 px-4">
     <div class="w-full max-w-3xl">
       <div class="text-center mb-8">
         <div class="w-24 h-24 rounded-full overflow-hidden mx-auto mb-6 shadow-lg border-4 border-white">
@@ -295,6 +307,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="text" name="shop_name" class="w-full p-3 border rounded-lg" value="<?php echo htmlspecialchars($form['shop_name']); ?>" required>
           </div>
 
+          <div>
+            <label class="block mb-1 font-medium">Shop Address</label>
+            <textarea name="shop_address" class="w-full p-3 border rounded-lg" rows="3" required><?php echo htmlspecialchars($form['shop_address']); ?></textarea>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label class="block mb-1 font-medium">Business Permit Picture</label>
@@ -312,11 +329,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           <div class="flex gap-3 pt-2">
             <?php if ($fromProfile || $isLoggedIn): ?>
-              <a href="customer_profile.php" class="px-4 py-3 border rounded-xl text-brand-900">Back to Profile</a>
+              <a href="profile.php" class="px-4 py-3 border rounded-xl text-brand-900">Back to Profile</a>
             <?php else: ?>
               <a href="landing.php" class="px-4 py-3 border rounded-xl text-brand-900">Back to Landing</a>
             <?php endif; ?>
-            <button type="submit" class="px-6 py-3 bg-brand-900 text-white rounded-xl">Submit Registration</button>
+            <button type="submit" class="px-6 py-3 bg-brand-900 text-white rounded-xl hover:bg-brand-700 transition">Submit Registration</button>
           </div>
         </form>
       </div>
