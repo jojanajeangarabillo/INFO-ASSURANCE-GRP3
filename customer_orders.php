@@ -256,8 +256,7 @@ require_roles([2, 4]);
   <a href="customer_home.php"><i class="bi bi-house"></i><span class="text">Home</span></a>
   <a href="customer_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
   <a href="customer_cart.php"><i class="bi bi-cart-check"></i><span class="text">Cart</span></a>
-  <a href="customer_wishlist.php"><i class="bi bi-bookmark-heart"></i><span class="text">Wishlist</span></a>
-  <a href="customer_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat & Support</span></a>
+ 
 
   <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>

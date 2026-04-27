@@ -1,12 +1,169 @@
 <?php
 require_once 'auth.php';
 require_roles([2, 4]);
+require_once 'admin/db.connect.php';
+
+$customerId = (int) $_SESSION['user_id'];
+$customerName = current_user_name();
+
+// Handle AJAX requests for cart operations
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+    header('Content-Type: application/json');
+    
+    $action = $_POST['action'] ?? '';
+    $response = ['success' => false, 'message' => 'Invalid action'];
+    
+    if ($action === 'get_cart') {
+        // Get cart items with product and variant details
+        $cartStmt = $conn->prepare("
+            SELECT 
+                ci.cart_item_id,
+                ci.variant_id,
+                ci.quantity,
+                pv.price,
+                pv.size,
+                pv.color,
+                pv.stock_qty,
+                p.product_id,
+                p.name as product_name,
+                p.category_gender
+            FROM cart_item ci
+            INNER JOIN cart c ON ci.cart_id = c.cart_id
+            INNER JOIN product_variant pv ON ci.variant_id = pv.variant_id
+            INNER JOIN product p ON pv.product_id = p.product_id
+            WHERE c.user_id = ? AND p.status = 'active'
+            ORDER BY ci.created_at DESC
+        ");
+        $cartStmt->bind_param("i", $customerId);
+        $cartStmt->execute();
+        $cartItems = $cartStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        
+        $items = [];
+        $subtotal = 0;
+        foreach ($cartItems as $item) {
+            $itemTotal = $item['price'] * $item['quantity'];
+            $subtotal += $itemTotal;
+            $items[] = [
+                'cart_item_id' => $item['cart_item_id'],
+                'variant_id' => $item['variant_id'],
+                'product_id' => $item['product_id'],
+                'product_name' => $item['product_name'],
+                'size' => $item['size'],
+                'color' => $item['color'],
+                'price' => (float) $item['price'],
+                'quantity' => (int) $item['quantity'],
+                'stock_qty' => (int) $item['stock_qty'],
+                'item_total' => $itemTotal,
+                'category' => $item['category_gender']
+            ];
+        }
+        
+        $response = [
+            'success' => true,
+            'items' => $items,
+            'subtotal' => $subtotal,
+            'total' => $subtotal,
+            'item_count' => count($items),
+            'total_quantity' => array_sum(array_column($items, 'quantity'))
+        ];
+        
+    } elseif ($action === 'update_quantity') {
+        $cartItemId = (int) ($_POST['cart_item_id'] ?? 0);
+        $quantity = (int) ($_POST['quantity'] ?? 1);
+        
+        if ($cartItemId <= 0) {
+            $response = ['success' => false, 'message' => 'Invalid cart item'];
+            echo json_encode($response);
+            exit;
+        }
+        
+        // Check variant stock
+        $stockStmt = $conn->prepare("
+            SELECT pv.stock_qty, pv.variant_id 
+            FROM cart_item ci
+            INNER JOIN product_variant pv ON ci.variant_id = pv.variant_id
+            WHERE ci.cart_item_id = ?
+        ");
+        $stockStmt->bind_param("i", $cartItemId);
+        $stockStmt->execute();
+        $stockResult = $stockStmt->get_result();
+        $stockData = $stockResult->fetch_assoc();
+        
+        if (!$stockData) {
+            $response = ['success' => false, 'message' => 'Item not found'];
+            echo json_encode($response);
+            exit;
+        }
+        
+        if ($quantity > $stockData['stock_qty']) {
+            $response = ['success' => false, 'message' => 'Not enough stock available', 'max_stock' => $stockData['stock_qty']];
+            echo json_encode($response);
+            exit;
+        }
+        
+        if ($quantity <= 0) {
+            // Remove item if quantity is 0
+            $deleteStmt = $conn->prepare("DELETE FROM cart_item WHERE cart_item_id = ?");
+            $deleteStmt->bind_param("i", $cartItemId);
+            $deleteStmt->execute();
+            $response = ['success' => true, 'message' => 'Item removed', 'action' => 'removed'];
+        } else {
+            $updateStmt = $conn->prepare("UPDATE cart_item SET quantity = ?, updated_at = NOW() WHERE cart_item_id = ?");
+            $updateStmt->bind_param("ii", $quantity, $cartItemId);
+            $updateStmt->execute();
+            $response = ['success' => true, 'message' => 'Quantity updated', 'action' => 'updated'];
+        }
+        
+    } elseif ($action === 'remove_item') {
+        $cartItemId = (int) ($_POST['cart_item_id'] ?? 0);
+        if ($cartItemId > 0) {
+            $deleteStmt = $conn->prepare("DELETE FROM cart_item WHERE cart_item_id = ?");
+            $deleteStmt->bind_param("i", $cartItemId);
+            $deleteStmt->execute();
+            $response = ['success' => true, 'message' => 'Item removed from cart'];
+        } else {
+            $response = ['success' => false, 'message' => 'Invalid item'];
+        }
+    }
+    
+    echo json_encode($response);
+    exit;
+}
+
+// Get initial cart data for page load
+$cartStmt = $conn->prepare("
+    SELECT 
+        ci.cart_item_id,
+        ci.variant_id,
+        ci.quantity,
+        pv.price,
+        pv.size,
+        pv.color,
+        pv.stock_qty,
+        p.product_id,
+        p.name as product_name,
+        p.category_gender
+    FROM cart_item ci
+    INNER JOIN cart c ON ci.cart_id = c.cart_id
+    INNER JOIN product_variant pv ON ci.variant_id = pv.variant_id
+    INNER JOIN product p ON pv.product_id = p.product_id
+    WHERE c.user_id = ? AND p.status = 'active'
+    ORDER BY ci.created_at DESC
+");
+$cartStmt->bind_param("i", $customerId);
+$cartStmt->execute();
+$cartItems = $cartStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$initialSubtotal = 0;
+foreach ($cartItems as $item) {
+    $initialSubtotal += $item['price'] * $item['quantity'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Customer Cart</title>
+<title>My Cart - J3RS</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="sidebar.css">
@@ -28,6 +185,7 @@ require_roles([2, 4]);
   .sidebar.collapsed ~ .main-content {
     margin-left: 70px;
   }
+  
   .notification-wrapper {
     position: fixed;
     top: 20px;
@@ -67,7 +225,6 @@ require_roles([2, 4]);
     }
   }
 
-  /* ===== ADDITIONAL CART UI STYLES ===== */
   .cart-container {
     max-width: 1400px;
     margin: 0 auto;
@@ -98,16 +255,17 @@ require_roles([2, 4]);
     align-items: center;
     justify-content: center;
     font-size: 2rem;
-    color: #5e3a2c;
+    color: #6e0f25;
   }
 
   .product-title {
     font-weight: 700;
     font-size: 1.05rem;
     margin-bottom: 4px;
+    color: #1f1a17;
   }
 
-  .product-color {
+  .product-variant {
     font-size: 0.75rem;
     color: #7a6856;
   }
@@ -139,6 +297,11 @@ require_roles([2, 4]);
 
   .qty-btn:hover {
     background: #e1d5ca;
+  }
+
+  .qty-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .remove-btn {
@@ -217,11 +380,36 @@ require_roles([2, 4]);
     padding: 3rem;
     text-align: center;
   }
+  
+  .loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .toast-message {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 9999;
+    background: white;
+    border-radius: 50px;
+    padding: 12px 24px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border-left: 4px solid #6e0f25;
+  }
 </style>
 </head>
 <body>
 
-<!-- ========= SIDEBAR ========= -->
+<!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
@@ -232,16 +420,14 @@ require_roles([2, 4]);
   <a href="customer_home.php"><i class="bi bi-house"></i><span class="text">Home</span></a>
   <a href="customer_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
   <a href="customer_cart.php"><i class="bi bi-cart-check"></i><span class="text">Cart</span></a>
-  <a href="customer_wishlist.php"><i class="bi bi-bookmark-heart"></i><span class="text">Wishlist</span></a>
-  <a href="customer_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat & Support</span></a>
-
+  
   <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>
     <span class="text">Logout</span>
   </a>
 </div>
 
-<!-- ========= ORIGINAL NOTIFICATION BELL ========= -->
+<!-- NOTIFICATION BELL -->
 <div class="notification-wrapper">
   <div class="dropdown">
     <button class="btn position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -260,7 +446,7 @@ require_roles([2, 4]);
           <i class="bi bi-truck text-danger mt-1"></i>
           <div>
             <div class="fw-bold">Order #SP-2345 shipped</div>
-            <small class="text-muted">Your Sony WH-1000XM4 is on the way</small>
+            <small class="text-muted">Your order is on the way</small>
             <div class="text-muted small">2 hours ago</div>
           </div>
         </div>
@@ -269,8 +455,8 @@ require_roles([2, 4]);
         <div class="d-flex gap-2">
           <i class="bi bi-tag-fill text-success mt-1"></i>
           <div>
-            <div class="fw-bold">Flash Sale: Mechanical Keyboard</div>
-            <small class="text-muted">Up to 20% off for limited time</small>
+            <div class="fw-bold">Flash Sale!</div>
+            <small class="text-muted">Limited time discounts</small>
             <div class="text-muted small">Yesterday</div>
           </div>
         </div>
@@ -279,8 +465,8 @@ require_roles([2, 4]);
         <div class="d-flex gap-2">
           <i class="bi bi-cup-hot text-warning mt-1"></i>
           <div>
-            <div class="fw-bold">New ceramic collection</div>
-            <small class="text-muted">Handcrafted mugs just dropped</small>
+            <div class="fw-bold">New collection</div>
+            <small class="text-muted">Fresh styles just dropped</small>
             <div class="text-muted small">2 days ago</div>
           </div>
         </div>
@@ -289,8 +475,8 @@ require_roles([2, 4]);
         <div class="d-flex gap-2">
           <i class="bi bi-check-circle text-secondary mt-1"></i>
           <div>
-            <div class="fw-bold">Welcome to ShopHub!</div>
-            <small class="text-muted">Complete your profile for perks</small>
+            <div class="fw-bold">Welcome to J3RS!</div>
+            <small class="text-muted">Explore our products</small>
             <div class="text-muted small">5 days ago</div>
           </div>
         </div>
@@ -299,242 +485,344 @@ require_roles([2, 4]);
   </div>
 </div>
 
-<!-- ========= MAIN CONTENT========= -->
+<!-- MAIN CONTENT -->
 <div class="main-content">
   <div id="cartRoot" class="cart-container">
+    <div class="text-center py-5">
+      <div class="spinner-border text-danger" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-3">Loading your cart...</p>
+    </div>
   </div>
 </div>
 
 <script>
-// ========== SIDEBAR TOGGLE ==========
-function toggleSidebar(){
-  document.getElementById("sidebar").classList.toggle("collapsed");
+// Pass PHP cart data to JavaScript
+const initialCartData = {
+    items: <?php echo json_encode($cartItems); ?>,
+    subtotal: <?php echo $initialSubtotal; ?>
+};
+
+function toggleSidebar() {
+    document.getElementById("sidebar").classList.toggle("collapsed");
 }
 
-// ==========  NOTIFICATION LOGIC ==========
+// Notification logic
 function updateUnreadBadge() {
-  const unreadCount = document.querySelectorAll('.notif-item.unread').length;
-  const badge = document.getElementById('notifBadge');
-  if (unreadCount === 0) {
-    if(badge) badge.style.display = 'none';
-  } else {
-    if(badge) {
-      badge.style.display = 'inline-block';
-      badge.innerText = unreadCount;
+    const unreadCount = document.querySelectorAll('.notif-item.unread').length;
+    const badge = document.getElementById('notifBadge');
+    if (unreadCount === 0) {
+        if(badge) badge.style.display = 'none';
+    } else {
+        if(badge) {
+            badge.style.display = 'inline-block';
+            badge.innerText = unreadCount;
+        }
     }
-  }
 }
+
 function markAsRead(element) {
-  if (element.classList.contains('unread')) {
-    element.classList.remove('unread');
-    updateUnreadBadge();
-  }
+    if (element.classList.contains('unread')) {
+        element.classList.remove('unread');
+        updateUnreadBadge();
+    }
 }
+
 function markAllAsRead() {
-  const unreadItems = document.querySelectorAll('.notif-item.unread');
-  unreadItems.forEach(item => {
-    item.classList.remove('unread');
-  });
-  updateUnreadBadge();
+    const unreadItems = document.querySelectorAll('.notif-item.unread');
+    unreadItems.forEach(item => {
+        item.classList.remove('unread');
+    });
+    updateUnreadBadge();
 }
+
 document.addEventListener('click', function(e) {
-  const notifItem = e.target.closest('.notif-item');
-  if (notifItem && !e.target.closest('#markAllReadBtn')) {
-    markAsRead(notifItem);
-  }
+    const notifItem = e.target.closest('.notif-item');
+    if (notifItem && !e.target.closest('#markAllReadBtn')) {
+        markAsRead(notifItem);
+    }
 });
+
 const markAllBtn = document.getElementById('markAllReadBtn');
 if(markAllBtn) {
-  markAllBtn.addEventListener('click', function(e) {
-    e.preventDefault();
-    markAllAsRead();
-  });
+    markAllBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        markAllAsRead();
+    });
 }
 updateUnreadBadge();
 
-let cartItems = [
-  {
-    id: 1,
-    name: "Sony WH-1000XM4 Wireless Headphones",
-    price: 16999,
-    color: "Silver",
-    quantity: 1,
-    icon: "bi-headphones"
-  },
-  {
-    id: 2,
-    name: "Minimalist Desk Lamp",
-    price: 4900,
-    color: "Matte Black",
-    quantity: 1,
-    icon: "bi-lamp"
-  }
-];
-
 function formatPHP(amount) {
-  return '₱' + amount.toLocaleString('en-PH');
+    return '₱' + amount.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 
-function renderCart() {
-  const root = document.getElementById('cartRoot');
-  if (!root) return;
-
-  const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const total = subtotal; 
-  const itemCount = cartItems.length;
-  const totalQty = cartItems.reduce((sum, i) => sum + i.quantity, 0);
-
-  if (cartItems.length === 0) {
-    root.innerHTML = `
-      <div class="empty-cart-placeholder">
-        <i class="bi bi-bag-x fs-1" style="color:#b37b5a;"></i>
-        <h4 class="mt-3 fw-semibold">Your cart is empty</h4>
-        <p class="text-muted">Looks like you haven't added anything yet.</p>
-      </div>
+function showToast(message, isError = false) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-message';
+    toast.style.backgroundColor = isError ? '#fee2e2' : '#e8f5e9';
+    toast.style.borderLeftColor = isError ? '#dc3545' : '#2b5e2f';
+    toast.innerHTML = `
+        <i class="bi ${isError ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'} me-2" style="color: ${isError ? '#dc3545' : '#2b5e2f'}"></i>
+        ${message}
     `;
-    const emptyBtn = document.getElementById('emptyContinueBtn');
-    if (emptyBtn) emptyBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      alert("✨ Explore our collections and find your next favorite item!");
-    });
-    return;
-  }
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
 
-  let itemsHtml = '';
-  cartItems.forEach(item => {
-    const itemTotal = item.price * item.quantity;
-    itemsHtml += `
-      <div class="cart-item-card" data-id="${item.id}">
-        <div class="row align-items-center g-3">
-          <div class="col-md-2 col-3">
-            <div class="product-icon">
-              <i class="bi ${item.icon}"></i>
-            </div>
-          </div>
-          <div class="col-md-4 col-9">
-            <div class="product-title">${escapeHtml(item.name)}</div>
-            <div class="product-color"><i class="bi bi-palette-fill me-1" style="font-size:0.7rem;"></i> Color: ${escapeHtml(item.color)}</div>
-            <div class="price-main mt-1">${formatPHP(item.price)}</div>
-          </div>
-          <div class="col-md-3 col-6">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <div class="quantity-selector">
-                <button class="qty-btn dec-qty" data-id="${item.id}">−</button>
-                <span class="fw-semibold mx-1" style="min-width: 28px; text-align:center;">${item.quantity}</span>
-                <button class="qty-btn inc-qty" data-id="${item.id}">+</button>
-              </div>
-              <button class="remove-btn" data-id="${item.id}"><i class="bi bi-trash3 me-1"></i> Remove</button>
-            </div>
-          </div>
-          <div class="col-md-3 col-6 text-md-end">
-            <div class="fw-bold fs-6">${formatPHP(itemTotal)}</div>
-          </div>
-        </div>
-      </div>
-    `;
-  });
-
-  const fullHtml = `
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
-      <div class="cart-header">
-        <h2 class="mb-0"><i class="bi bi-bag-heart me-2" style="color:#6e0f25;"></i> Shopping Cart</h2>
-        <p class="text-muted mt-1">${itemCount} item${itemCount !== 1 ? 's' : ''} in your cart ${totalQty > 0 ? `• ${totalQty} total piece${totalQty !== 1 ? 's' : ''}` : ''}</p>
-      </div>
-      <div>
-        <a href="customer_home.php" id="topContinueLink" class="continue-shopping-link"><i class="bi bi-arrow-left-short"></i> Continue Shopping</a>
-      </div>
-    </div>
-
-    <div class="row g-4">
-      <div class="col-lg-8">
-        ${itemsHtml}
-      </div>
-      <div class="col-lg-4">
-        <div class="order-summary-card">
-          <h5 class="fw-bold mb-3">Order Summary</h5>
-          <div class="summary-row">
-            <span>Subtotal</span>
-            <span id="summarySubtotal">${formatPHP(subtotal)}</span>
-          </div>
-          <div class="summary-row">
-            <span>Shipping</span>
-            <span class="text-success">Free</span>
-          </div>
-          <div class="total-row d-flex justify-content-between">
-            <span>Total</span>
-            <span id="summaryTotal" class="fw-bold">${formatPHP(total)}</span>
-          </div>
-          <button class="btn btn-checkout-custom mt-4" id="proceedCheckoutBtn">Proceed to Checkout →</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  root.innerHTML = fullHtml;
-
-  // attach event listeners for cart actions
-  document.querySelectorAll('.inc-qty').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(btn.getAttribute('data-id'));
-      updateQuantity(id, +1);
-    });
-  });
-  document.querySelectorAll('.dec-qty').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(btn.getAttribute('data-id'));
-      updateQuantity(id, -1);
-    });
-  });
-  document.querySelectorAll('.remove-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(btn.getAttribute('data-id'));
-      removeItem(id);
-    });
-  });
-
-  // continue shopping links
-  const topLink = document.getElementById('topContinueLink');
-  const bottomLink = document.getElementById('bottomContinueLink');
-  const proceedBtn = document.getElementById('proceedCheckoutBtn');
-  if (bottomLink) bottomLink.addEventListener('click', (e) => { e.preventDefault(); alert("🛍️ Continue browsing — discover new arrivals!"); });
-  if (proceedBtn) proceedBtn.addEventListener('click', () => {
-    if (cartItems.length === 0) {
-      alert("Your cart is empty. Add items before checkout 🛒");
-      return;
+async function fetchCartData() {
+    try {
+        const formData = new URLSearchParams();
+        formData.append('action', 'get_cart');
+        
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData.toString()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            renderCart(data);
+        } else {
+            showToast('Failed to load cart', true);
+        }
+    } catch (error) {
+        console.error('Error fetching cart:', error);
+        showToast('Error loading cart', true);
     }
-    const totalAmount = cartItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-    alert(`✅ Proceeding to secure checkout!\nTotal amount: ${formatPHP(totalAmount)}\nThank you for shopping with us.`);
-  });
 }
 
-function updateQuantity(id, delta) {
-  const idx = cartItems.findIndex(i => i.id === id);
-  if (idx === -1) return;
-  const newQty = cartItems[idx].quantity + delta;
-  if (newQty < 1) {
-    removeItem(id);
-  } else {
-    cartItems[idx].quantity = newQty;
-    renderCart();
-  }
+async function updateQuantity(cartItemId, newQuantity) {
+    try {
+        const formData = new URLSearchParams();
+        formData.append('action', 'update_quantity');
+        formData.append('cart_item_id', cartItemId);
+        formData.append('quantity', newQuantity);
+        
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData.toString()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            await fetchCartData();
+            showToast(data.message);
+        } else {
+            if (data.max_stock) {
+                showToast(`Only ${data.max_stock} items available in stock`, true);
+            } else {
+                showToast(data.message || 'Failed to update', true);
+            }
+        }
+    } catch (error) {
+        console.error('Error updating quantity:', error);
+        showToast('Error updating cart', true);
+    }
 }
 
-function removeItem(id) {
-  cartItems = cartItems.filter(i => i.id !== id);
-  renderCart();
+async function removeItem(cartItemId) {
+    try {
+        const formData = new URLSearchParams();
+        formData.append('action', 'remove_item');
+        formData.append('cart_item_id', cartItemId);
+        
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData.toString()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            await fetchCartData();
+            showToast(data.message);
+        } else {
+            showToast(data.message || 'Failed to remove item', true);
+        }
+    } catch (error) {
+        console.error('Error removing item:', error);
+        showToast('Error removing item', true);
+    }
+}
+
+function renderCart(data) {
+    const root = document.getElementById('cartRoot');
+    if (!root) return;
+    
+    const items = data.items || [];
+    const subtotal = data.subtotal || 0;
+    const total = data.total || 0;
+    const itemCount = data.item_count || 0;
+    const totalQty = data.total_quantity || 0;
+    
+    if (items.length === 0) {
+        root.innerHTML = `
+            <div class="empty-cart-placeholder">
+                <i class="bi bi-bag-x fs-1" style="color:#b37b5a;"></i>
+                <h4 class="mt-3 fw-semibold">Your cart is empty</h4>
+                <p class="text-muted">Looks like you haven't added anything yet.</p>
+                <a href="customer_home.php" class="btn btn-outline-danger rounded-pill px-4 mt-2">Continue Shopping</a>
+            </div>
+        `;
+        return;
+    }
+    
+    let itemsHtml = '';
+    items.forEach(item => {
+        const itemTotal = item.price * item.quantity;
+        const isLowStock = item.stock_qty <= 5 && item.stock_qty > 0;
+        const outOfStock = item.stock_qty <= 0;
+        
+        itemsHtml += `
+            <div class="cart-item-card" data-cart-item-id="${item.cart_item_id}">
+                <div class="row align-items-center g-3">
+                    <div class="col-md-2 col-3">
+                        <div class="product-icon">
+                            <i class="bi bi-bag"></i>
+                        </div>
+                    </div>
+                    <div class="col-md-4 col-9">
+                        <div class="product-title">${escapeHtml(item.product_name)}</div>
+                        <div class="product-variant">
+                            <i class="bi bi-palette-fill me-1" style="font-size:0.7rem;"></i> ${escapeHtml(item.size)} / ${escapeHtml(item.color)}
+                        </div>
+                        <div class="price-main mt-1">${formatPHP(item.price)}</div>
+                        ${isLowStock ? `<small class="text-warning"><i class="bi bi-exclamation-triangle"></i> Only ${item.stock_qty} left!</small>` : ''}
+                        ${outOfStock ? `<small class="text-danger"><i class="bi bi-x-circle"></i> Out of stock</small>` : ''}
+                    </div>
+                    <div class="col-md-3 col-6">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="quantity-selector">
+                                <button class="qty-btn dec-qty" data-id="${item.cart_item_id}" data-current="${item.quantity}" ${outOfStock ? 'disabled' : ''}>−</button>
+                                <span class="fw-semibold mx-1" style="min-width: 28px; text-align:center;">${item.quantity}</span>
+                                <button class="qty-btn inc-qty" data-id="${item.cart_item_id}" data-current="${item.quantity}" data-max="${item.stock_qty}" ${outOfStock ? 'disabled' : ''}>+</button>
+                            </div>
+                            <button class="remove-btn" data-id="${item.cart_item_id}"><i class="bi bi-trash3 me-1"></i> Remove</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-6 text-md-end">
+                        <div class="fw-bold fs-6">${formatPHP(itemTotal)}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    const fullHtml = `
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div class="cart-header">
+                <h2 class="mb-0"><i class="bi bi-bag-heart me-2" style="color:#6e0f25;"></i> Shopping Cart</h2>
+                <p class="text-muted mt-1">${itemCount} item${itemCount !== 1 ? 's' : ''} in your cart • ${totalQty} total piece${totalQty !== 1 ? 's' : ''}</p>
+            </div>
+            <div>
+                <a href="customer_home.php" class="continue-shopping-link"><i class="bi bi-arrow-left-short"></i> Continue Shopping</a>
+            </div>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-lg-8">
+                ${itemsHtml}
+            </div>
+            <div class="col-lg-4">
+                <div class="order-summary-card">
+                    <h5 class="fw-bold mb-3">Order Summary</h5>
+                    <div class="summary-row">
+                        <span>Subtotal</span>
+                        <span>${formatPHP(subtotal)}</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Shipping</span>
+                        <span class="text-success">Free</span>
+                    </div>
+                    <div class="total-row d-flex justify-content-between">
+                        <span>Total</span>
+                        <span class="fw-bold">${formatPHP(total)}</span>
+                    </div>
+                    <button class="btn btn-checkout-custom mt-4" id="proceedCheckoutBtn">Proceed to Checkout →</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    root.innerHTML = fullHtml;
+    
+    // Attach event listeners
+    document.querySelectorAll('.inc-qty').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const cartItemId = parseInt(btn.getAttribute('data-id'));
+            const currentQty = parseInt(btn.getAttribute('data-current'));
+            const maxStock = parseInt(btn.getAttribute('data-max'));
+            if (currentQty < maxStock) {
+                await updateQuantity(cartItemId, currentQty + 1);
+            } else {
+                showToast(`Only ${maxStock} items available in stock`, true);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.dec-qty').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const cartItemId = parseInt(btn.getAttribute('data-id'));
+            const currentQty = parseInt(btn.getAttribute('data-current'));
+            if (currentQty > 1) {
+                await updateQuantity(cartItemId, currentQty - 1);
+            } else if (currentQty === 1) {
+                if (confirm('Remove this item from cart?')) {
+                    await removeItem(cartItemId);
+                }
+            }
+        });
+    });
+    
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const cartItemId = parseInt(btn.getAttribute('data-id'));
+            if (confirm('Remove this item from your cart?')) {
+                await removeItem(cartItemId);
+            }
+        });
+    });
+    
+    const checkoutBtn = document.getElementById('proceedCheckoutBtn');
+    if (checkoutBtn) {
+        checkoutBtn.addEventListener('click', () => {
+            if (items.length === 0) {
+                showToast('Your cart is empty', true);
+                return;
+            }
+            const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            showToast(`Proceeding to checkout! Total: ${formatPHP(totalAmount)}`);
+            setTimeout(() => {
+                window.location.href = 'customer_checkout.php';
+            }, 1500);
+        });
+    }
 }
 
 function escapeHtml(str) {
-  return str.replace(/[&<>]/g, function(m) {
-    if (m === '&') return '&amp;';
-    if (m === '<') return '&lt;';
-    if (m === '>') return '&gt;';
-    return m;
-  });
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
-// initial render
-renderCart();
+// Load cart on page load
+fetchCartData();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
