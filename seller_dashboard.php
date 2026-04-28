@@ -378,8 +378,7 @@ function getOrderStatusBadge($status) {
   <a href="seller_inventory.php"><i class="bi bi-box"></i><span class="text">Inventory</span></a>
   <a href="seller_reviews.php"><i class="bi bi-star"></i><span class="text">Reviews</span></a>
   <a href="seller_profile.php"><i class="bi bi-shop"></i><span class="text">Profile</span></a>
-  <a href="seller_chat.php"><i class="bi bi-chat-dots"></i><span class="text">Chat</span></a>
-
+  
   <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>
     <span class="text">Logout</span>

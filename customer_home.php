@@ -39,7 +39,7 @@ if (isset($_GET['ajax_product_id'])) {
         exit;
     }
     
-    // Fetch all variants for this product
+    // Fetch all variants for this product with image
     $variantStmt = $conn->prepare("
         SELECT 
             variant_id,
@@ -47,7 +47,8 @@ if (isset($_GET['ajax_product_id'])) {
             size,
             color,
             price,
-            stock_qty
+            stock_qty,
+            image_path
         FROM product_variant
         WHERE product_id = ?
         ORDER BY price ASC
@@ -136,9 +137,11 @@ $sql = "SELECT
           p.name,
           p.category_gender,
           MIN(pv.price) AS min_price,
+          MAX(pv.price) AS max_price,
           MIN(pv.variant_id) AS default_variant_id,
+          MIN(pv.image_path) AS sample_image,
           COALESCE(AVG(r.rating), 0) AS avg_rating,
-          COUNT(r.review_id) AS review_count
+          COUNT(DISTINCT r.review_id) AS review_count
         FROM product p
         INNER JOIN product_variant pv ON pv.product_id = p.product_id
         LEFT JOIN review r ON r.product_id = p.product_id
@@ -223,9 +226,6 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         border-left: 3px solid #6e0f25;
         padding-left: 12px;
     }
-    .notif-item .fw-bold {
-        font-weight: 600;
-    }
 
     .product-card {
         border: none;
@@ -239,21 +239,34 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         transform: translateY(-5px);
         box-shadow: 0 20px 25px -12px rgba(0,0,0,0.15);
     }
-    .product-icon {
+    .product-image {
         background: #f9f5f2;
         padding: 24px 0;
         text-align: center;
-        border-bottom: 1px solid #f0eae5;
+        height: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
     }
-    .product-icon i {
+    .product-image img {
+        max-width: 100%;
+        max-height: 140px;
+        object-fit: contain;
+    }
+    .product-image i {
         font-size: 3.2rem;
         color: #6e0f25;
     }
     .product-title {
         font-weight: 700;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         margin-bottom: 0.5rem;
         color: #1f1a17;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
     .rating-wrap {
         display: flex;
@@ -267,17 +280,23 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         background: #fff1e6;
         padding: 4px 8px;
         border-radius: 40px;
-        font-size: 0.85rem;
+        font-size: 0.75rem;
     }
     .review-count {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
         color: #7c6e65;
     }
     .product-price {
-        font-size: 1.5rem;
+        font-size: 1.3rem;
         font-weight: 800;
         color: #2c2c2c;
         margin: 12px 0 16px 0;
+    }
+    .original-price {
+        font-size: 0.85rem;
+        color: #999;
+        text-decoration: line-through;
+        margin-left: 8px;
     }
     .btn-add-cart {
         background: #6e0f25;
@@ -292,6 +311,21 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     .btn-add-cart:hover {
         background: #8c1c36;
         transform: scale(0.98);
+        color: white;
+    }
+    .btn-view-details {
+        background: transparent;
+        color: #6e0f25;
+        border: 1px solid #6e0f25;
+        border-radius: 40px;
+        padding: 8px 0;
+        font-weight: 600;
+        width: 100%;
+        margin-bottom: 8px;
+        transition: all 0.2s;
+    }
+    .btn-view-details:hover {
+        background: #6e0f25;
         color: white;
     }
     .section-title {
@@ -425,6 +459,7 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         color: #3c2f2a;
         cursor: pointer;
         transition: all 0.2s;
+        text-decoration: none;
     }
     .filter-chip.active {
         background: #6e0f25;
@@ -437,20 +472,29 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     .product-modal-image {
         background: #f9f5f2;
         border-radius: 20px;
-        padding: 30px;
+        padding: 20px;
         text-align: center;
+        min-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .product-modal-image img {
+        max-width: 100%;
+        max-height: 260px;
+        object-fit: contain;
     }
     .product-modal-image i {
         font-size: 5rem;
         color: #6e0f25;
     }
     .modal-product-title {
-        font-size: 1.8rem;
+        font-size: 1.6rem;
         font-weight: 800;
         margin-bottom: 0.5rem;
     }
     .modal-price {
-        font-size: 2rem;
+        font-size: 1.8rem;
         font-weight: 800;
         color: #6e0f25;
     }
@@ -459,23 +503,71 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         border-radius: 16px;
         padding: 16px;
     }
-    .variant-option {
+    .variant-group {
+        margin-bottom: 20px;
+    }
+    .variant-group-title {
+        font-weight: 600;
+        margin-bottom: 12px;
+        font-size: 0.9rem;
+        color: #2d2a27;
+        border-bottom: 1px solid #e0d6cf;
+        padding-bottom: 6px;
+    }
+    .variant-radio-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    .variant-radio {
+        display: inline-flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 8px 16px;
         border: 1px solid #e0d6cf;
         border-radius: 40px;
-        padding: 6px 18px;
-        margin: 0 8px 8px 0;
-        display: inline-block;
-        cursor: pointer;
         transition: all 0.2s;
-        font-size: 0.9rem;
+        background: white;
     }
-    .variant-option.selected {
-        background: #6e0f25;
-        color: white;
+    .variant-radio input {
+        margin-right: 8px;
+        cursor: pointer;
+        accent-color: #6e0f25;
+    }
+    .variant-radio:hover {
+        background: #f5f1ee;
         border-color: #6e0f25;
     }
-    .variant-option:hover:not(.selected) {
-        background: #e3dbd4;
+    .variant-radio.selected {
+        background: #6e0f25;
+        border-color: #6e0f25;
+        color: white;
+    }
+    .variant-radio.selected input {
+        accent-color: white;
+    }
+    .variant-radio.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: #f0f0f0;
+    }
+    .variant-radio.disabled input {
+        cursor: not-allowed;
+    }
+    .color-swatch {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+        vertical-align: middle;
+        border: 1px solid #ddd;
+    }
+    .stock-badge-small {
+        font-size: 0.7rem;
+        margin-left: 8px;
+        color: #666;
     }
     .quantity-input {
         width: 100px;
@@ -491,15 +583,15 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         padding: 12px 24px;
         font-weight: 700;
         width: 100%;
+        border: none;
     }
-    .btn-modal-add:hover {
+    .btn-modal-add:hover:not(:disabled) {
         background: #8c1c36;
         color: white;
     }
-    .stock-badge {
-        font-size: 0.85rem;
-        padding: 4px 12px;
-        border-radius: 40px;
+    .btn-modal-add:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
     
     @media (max-width: 992px) {
@@ -527,8 +619,25 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             gap: 1.2rem;
         }
     }
-    hr {
-        opacity: 0.3;
+    
+    .alert-toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        min-width: 300px;
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
     }
 </style>
 </head>
@@ -542,7 +651,7 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     </div>
 
     <a href="customer_profile.php"><i class="bi bi-person-circle"></i><span class="text">Profile</span></a>
-    <a href="customer_home.php"><i class="bi bi-house"></i><span class="text">Home</span></a>
+    <a href="customer_home.php" class="active"><i class="bi bi-house"></i><span class="text">Home</span></a>
     <a href="customer_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
     <a href="customer_cart.php"><i class="bi bi-cart-check"></i><span class="text">Cart</span></a>
 
@@ -583,16 +692,6 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <div class="fw-bold">Flash Sale!</div>
                         <small class="text-muted">Limited time discounts</small>
                         <div class="text-muted small">Yesterday</div>
-                    </div>
-                </div>
-            </div>
-            <div class="notif-item unread">
-                <div class="d-flex gap-2">
-                    <i class="bi bi-cup-hot text-warning mt-1"></i>
-                    <div>
-                        <div class="fw-bold">New collection</div>
-                        <small class="text-muted">Fresh styles just dropped</small>
-                        <div class="text-muted small">2 days ago</div>
                     </div>
                 </div>
             </div>
@@ -673,8 +772,12 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <?php foreach ($products as $product): ?>
             <div class="col-sm-6 col-lg-3">
                 <div class="product-card card h-100">
-                    <div class="product-icon">
-                        <i class="bi bi-bag"></i>
+                    <div class="product-image">
+                        <?php if (!empty($product['sample_image']) && file_exists($product['sample_image'])): ?>
+                            <img src="<?php echo htmlspecialchars($product['sample_image']); ?>" alt="<?php echo htmlspecialchars($product['name']); ?>">
+                        <?php else: ?>
+                            <i class="bi bi-bag"></i>
+                        <?php endif; ?>
                     </div>
                     <div class="card-body">
                         <h5 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h5>
@@ -682,17 +785,24 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                             <span class="rating-value"><i class="bi bi-star-fill me-1"></i><?php echo number_format((float) $product['avg_rating'], 1); ?></span>
                             <span class="review-count">(<?php echo (int) $product['review_count']; ?> reviews)</span>
                         </div>
-                        <div class="product-price">P<?php echo number_format((float) $product['min_price'], 2); ?></div>
-                        <!-- View Details button - opens modal -->
-                        <button type="button" class="btn-add-cart d-inline-block text-center text-decoration-none mb-2 view-details-btn" 
+                        <div class="product-price">
+                            ₱<?php echo number_format((float) $product['min_price'], 2); ?>
+                            <?php if ($product['max_price'] > $product['min_price']): ?>
+                                <span class="original-price">₱<?php echo number_format((float) $product['max_price'], 2); ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <button type="button" class="btn-view-details view-details-btn" 
                                 data-product-id="<?php echo (int) $product['product_id']; ?>"
                                 data-bs-toggle="modal" 
                                 data-bs-target="#productDetailModal">
-                            View Details
+                            <i class="bi bi-eye"></i> View Details
                         </button>
-                        <form method="POST">
+                        <form method="POST" class="add-to-cart-simple">
                             <input type="hidden" name="add_to_cart_variant_id" value="<?php echo (int) $product['default_variant_id']; ?>">
-                            <button type="submit" class="btn-add-cart">Add to Cart</button>
+                            <input type="hidden" name="quantity" value="1">
+                            <button type="submit" class="btn-add-cart">
+                                <i class="bi bi-cart-plus"></i> Add to Cart
+                            </button>
                         </form>
                     </div>
                 </div>
@@ -713,7 +823,7 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <div class="modal-body" style="padding: 1.5rem;">
                 <div class="row g-4">
                     <div class="col-md-5">
-                        <div class="product-modal-image text-center">
+                        <div class="product-modal-image" id="modalImageContainer">
                             <i class="bi bi-bag-heart" id="modalProductIcon"></i>
                         </div>
                     </div>
@@ -723,34 +833,44 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                             <span class="rating-value" id="modalRating"><i class="bi bi-star-fill me-1"></i>0.0</span>
                             <span class="review-count ms-2" id="modalReviewCount">(0 reviews)</span>
                         </div>
-                        <div class="modal-price mb-3" id="modalPrice">P0.00</div>
+                        <div class="modal-price mb-3" id="modalPrice">₱0.00</div>
                         <div class="mb-3">
                             <p class="text-muted" id="modalDescription">Product description will appear here.</p>
                         </div>
                         <div class="mb-3">
                             <span class="badge bg-secondary" id="modalCategory">Category</span>
-                            <span class="stock-badge ms-2" id="modalStockStatus">In Stock</span>
                         </div>
                         
-                        <!-- Variant Selection Section -->
+                        <!-- Variant Selection Section with Radio Buttons -->
                         <div class="variant-selector mb-3">
-                            <div class="mb-2 fw-semibold">Select Variant:</div>
-                            <div id="variantsContainer" class="mb-3">
-                                <div class="text-muted">Loading variants...</div>
+                            <div id="sizeGroupContainer" class="variant-group">
+                                <div class="variant-group-title">Select Size:</div>
+                                <div id="sizeRadioGroup" class="variant-radio-group">
+                                    <div class="text-muted">Loading sizes...</div>
+                                </div>
                             </div>
-                            <div class="mt-2">
+                            
+                            <div id="colorGroupContainer" class="variant-group">
+                                <div class="variant-group-title">Select Color:</div>
+                                <div id="colorRadioGroup" class="variant-radio-group">
+                                    <div class="text-muted">Please select a size first</div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
                                 <label class="fw-semibold mb-1">Quantity:</label>
                                 <input type="number" id="modalQuantity" class="quantity-input" value="1" min="1" max="99">
+                                <span id="modalStockDisplay" class="ms-2 text-muted small"></span>
                             </div>
                         </div>
                         
                         <form method="POST" id="modalAddToCartForm">
                             <input type="hidden" name="add_to_cart_variant_id" id="modalVariantId" value="">
                             <input type="hidden" name="quantity" id="modalQuantityHidden" value="1">
-                            <button type="submit" class="btn-modal-add" id="modalAddToCartBtn">Add to Cart</button>
+                            <button type="submit" class="btn-modal-add" id="modalAddToCartBtn" disabled>Select Size & Color</button>
                         </form>
                         <div class="mt-2 text-center">
-                            <small class="text-muted" id="modalVariantHint">Select a variant to add to cart</small>
+                            <small class="text-muted" id="modalVariantHint">Select a size and color to add to cart</small>
                         </div>
                     </div>
                 </div>
@@ -811,87 +931,246 @@ if(markAllBtn) {
 
 updateUnreadBadge();
 
+// Show toast notification
+function showToast(message, isSuccess = true) {
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${isSuccess ? 'success' : 'danger'} alert-dismissible fade show alert-toast`;
+    toast.innerHTML = `
+        ${isSuccess ? '✓' : '✗'} ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
 // PRODUCT DETAILS MODAL - Fetch from same file using AJAX
 document.addEventListener('DOMContentLoaded', function() {
     const viewDetailsBtns = document.querySelectorAll('.view-details-btn');
     const modal = document.getElementById('productDetailModal');
     let currentVariants = [];
+    let selectedSize = null;
+    let selectedColor = null;
     let selectedVariantId = null;
     
-    // Function to update modal UI based on selected variant
-    function updateModalForVariant(variantId) {
-        const variant = currentVariants.find(v => v.variant_id == variantId);
-        if (!variant) return;
+    // Helper function to get color display
+    function getColorDisplay(color) {
+        const colorLower = color.toLowerCase();
+        const colorMap = {
+            'red': '#ff0000',
+            'blue': '#0000ff',
+            'black': '#000000',
+            'white': '#ffffff',
+            'green': '#00ff00',
+            'yellow': '#ffff00',
+            'purple': '#800080',
+            'orange': '#ffa500',
+            'pink': '#ffc0cb',
+            'brown': '#8b4513',
+            'gray': '#808080',
+            'grey': '#808080'
+        };
         
-        selectedVariantId = variantId;
-        document.getElementById('modalVariantId').value = variantId;
-        document.getElementById('modalPrice').innerHTML = 'P' + parseFloat(variant.price).toFixed(2);
-        document.getElementById('modalStockStatus').innerHTML = variant.stock_qty > 0 ? 
-            '<span class="badge bg-success">In Stock (' + variant.stock_qty + ')</span>' : 
-            '<span class="badge bg-danger">Out of Stock</span>';
-        
-        // Update quantity max based on stock
-        const qtyInput = document.getElementById('modalQuantity');
-        qtyInput.max = variant.stock_qty > 0 ? variant.stock_qty : 0;
-        if (qtyInput.value > variant.stock_qty && variant.stock_qty > 0) qtyInput.value = variant.stock_qty;
-        if (variant.stock_qty <= 0) qtyInput.disabled = true;
-        else qtyInput.disabled = false;
-        
-        // Update hidden quantity field
-        document.getElementById('modalQuantityHidden').value = qtyInput.value;
-        
-        // Update selected styling in variant options
-        document.querySelectorAll('.variant-option').forEach(opt => {
-            if (opt.dataset.variantId == variantId) {
-                opt.classList.add('selected');
-            } else {
-                opt.classList.remove('selected');
+        for (let [key, value] of Object.entries(colorMap)) {
+            if (colorLower.includes(key)) {
+                return `<span class="color-swatch" style="background-color: ${value}; border: 1px solid #ddd;"></span>`;
             }
-        });
-        
-        const addBtn = document.getElementById('modalAddToCartBtn');
-        if (variant.stock_qty <= 0) {
-            addBtn.disabled = true;
-            addBtn.innerHTML = 'Out of Stock';
-            addBtn.style.opacity = '0.6';
-            document.getElementById('modalVariantHint').innerHTML = '<span class="text-danger">This variant is out of stock</span>';
+        }
+        return `<span class="color-swatch" style="background-color: ${colorLower}; border: 1px solid #ddd;"></span>`;
+    }
+    
+    // Get unique sizes from variants
+    function getUniqueSizes(variants) {
+        const sizes = [...new Set(variants.map(v => v.size))];
+        return sizes.sort();
+    }
+    
+    // Get colors available for a specific size
+    function getColorsForSize(variants, size) {
+        return variants.filter(v => v.size === size);
+    }
+    
+    // Find variant by size and color
+    function findVariantBySizeColor(variants, size, color) {
+        return variants.find(v => v.size === size && v.color === color);
+    }
+    
+    // Update modal UI based on selected size and color
+    function updateSelection() {
+        if (selectedSize && selectedColor) {
+            const variant = findVariantBySizeColor(currentVariants, selectedSize, selectedColor);
+            if (variant) {
+                selectedVariantId = variant.variant_id;
+                document.getElementById('modalVariantId').value = variant.variant_id;
+                document.getElementById('modalPrice').innerHTML = '₱' + parseFloat(variant.price).toFixed(2);
+                
+                const stockStatus = variant.stock_qty > 0 ? 
+                    `<span class="badge bg-success">In Stock (${variant.stock_qty} available)</span>` : 
+                    `<span class="badge bg-danger">Out of Stock</span>`;
+                document.getElementById('modalStockDisplay').innerHTML = stockStatus;
+                
+                // Update quantity max based on stock
+                const qtyInput = document.getElementById('modalQuantity');
+                qtyInput.max = variant.stock_qty > 0 ? variant.stock_qty : 0;
+                if (qtyInput.value > variant.stock_qty && variant.stock_qty > 0) qtyInput.value = variant.stock_qty;
+                if (variant.stock_qty <= 0) {
+                    qtyInput.disabled = true;
+                    qtyInput.value = 0;
+                } else {
+                    qtyInput.disabled = false;
+                }
+                
+                const addBtn = document.getElementById('modalAddToCartBtn');
+                if (variant.stock_qty <= 0) {
+                    addBtn.disabled = true;
+                    addBtn.innerHTML = 'Out of Stock';
+                    document.getElementById('modalVariantHint').innerHTML = '<span class="text-danger">This variant is out of stock</span>';
+                } else {
+                    addBtn.disabled = false;
+                    addBtn.innerHTML = 'Add to Cart';
+                    document.getElementById('modalVariantHint').innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Ready to add';
+                }
+                
+                // Update image if variant has specific image
+                const modalImageContainer = document.getElementById('modalImageContainer');
+                if (variant.image_path && variant.image_path !== 'null' && variant.image_path !== '') {
+                    modalImageContainer.innerHTML = `<img src="${variant.image_path}" alt="Product image">`;
+                } else {
+                    const firstVariantWithImage = currentVariants.find(v => v.image_path && v.image_path !== 'null' && v.image_path !== '');
+                    if (firstVariantWithImage) {
+                        modalImageContainer.innerHTML = `<img src="${firstVariantWithImage.image_path}" alt="Product image">`;
+                    } else {
+                        modalImageContainer.innerHTML = `<i class="bi bi-bag-heart" id="modalProductIcon"></i>`;
+                    }
+                }
+            }
         } else {
-            addBtn.disabled = false;
-            addBtn.innerHTML = 'Add to Cart';
-            addBtn.style.opacity = '1';
-            document.getElementById('modalVariantHint').innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Ready to add';
+            document.getElementById('modalAddToCartBtn').disabled = true;
+            document.getElementById('modalAddToCartBtn').innerHTML = 'Select Size & Color';
+            document.getElementById('modalVariantHint').innerHTML = 'Select a size and color to add to cart';
+            document.getElementById('modalVariantId').value = '';
         }
     }
     
-    // Render variant chips
-    function renderVariants(variants) {
-        const container = document.getElementById('variantsContainer');
-        if (!variants || variants.length === 0) {
-            container.innerHTML = '<div class="text-muted">No variants available</div>';
+    // Render size radio buttons
+    function renderSizes(sizes, variants) {
+        const container = document.getElementById('sizeRadioGroup');
+        if (!sizes || sizes.length === 0) {
+            container.innerHTML = '<div class="text-muted">No sizes available</div>';
             return;
         }
         
-        let html = '<div class="d-flex flex-wrap">';
-        variants.forEach(variant => {
-            html += `<div class="variant-option" data-variant-id="${variant.variant_id}" data-price="${variant.price}" data-stock="${variant.stock_qty}">
-                        ${variant.size} / ${variant.color}
-                    </div>`;
+        let html = '';
+        sizes.forEach(size => {
+            const hasStock = variants.some(v => v.size === size && v.stock_qty > 0);
+            const disabledClass = !hasStock ? 'disabled' : '';
+            const stockText = !hasStock ? ' (Out of Stock)' : '';
+            
+            html += `
+                <label class="variant-radio ${disabledClass}" data-size="${escapeHtml(size)}">
+                    <input type="radio" name="size" value="${escapeHtml(size)}" ${!hasStock ? 'disabled' : ''}>
+                    <strong>${escapeHtml(size)}</strong>${stockText}
+                </label>
+            `;
         });
-        html += '</div>';
         container.innerHTML = html;
         
-        // Add click handlers
-        document.querySelectorAll('.variant-option').forEach(elem => {
-            elem.addEventListener('click', function() {
-                const vid = parseInt(this.dataset.variantId);
-                if (!isNaN(vid)) {
-                    updateModalForVariant(vid);
+        // Add event listeners to size radio buttons
+        document.querySelectorAll('input[name="size"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    selectedSize = this.value;
+                    // Update color options based on selected size
+                    updateColorsForSize(selectedSize);
+                    
+                    // Update styling
+                    document.querySelectorAll('.variant-radio').forEach(label => {
+                        if (label.querySelector('input[name="size"]') === this) {
+                            label.classList.add('selected');
+                        } else if (label.querySelector('input[name="size"]')) {
+                            label.classList.remove('selected');
+                        }
+                    });
                 }
             });
         });
     }
     
-    // Fetch product details via AJAX to same file
+    // Update color options based on selected size
+    function updateColorsForSize(size) {
+        const colorsForSize = getColorsForSize(currentVariants, size);
+        const colorContainer = document.getElementById('colorRadioGroup');
+        
+        if (!colorsForSize || colorsForSize.length === 0) {
+            colorContainer.innerHTML = '<div class="text-muted">No colors available for this size</div>';
+            selectedColor = null;
+            selectedVariantId = null;
+            updateSelection();
+            return;
+        }
+        
+        let html = '';
+        colorsForSize.forEach(variant => {
+            const hasStock = variant.stock_qty > 0;
+            const disabledClass = !hasStock ? 'disabled' : '';
+            const colorHtml = getColorDisplay(variant.color);
+            const stockText = !hasStock ? ` (Out of Stock - ${variant.stock_qty})` : ` (${variant.stock_qty} in stock)`;
+            
+            html += `
+                <label class="variant-radio ${disabledClass}" data-color="${escapeHtml(variant.color)}" data-variant-id="${variant.variant_id}">
+                    <input type="radio" name="color" value="${escapeHtml(variant.color)}" data-variant-id="${variant.variant_id}" ${!hasStock ? 'disabled' : ''}>
+                    ${colorHtml}
+                    <span>${escapeHtml(variant.color)}</span>
+                    <span class="stock-badge-small">${stockText}</span>
+                </label>
+            `;
+        });
+        colorContainer.innerHTML = html;
+        
+        // Reset color selection
+        selectedColor = null;
+        selectedVariantId = null;
+        
+        // Add event listeners to color radio buttons
+        document.querySelectorAll('input[name="color"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    selectedColor = this.value;
+                    const variantId = parseInt(this.dataset.variantId);
+                    const variant = currentVariants.find(v => v.variant_id === variantId);
+                    if (variant) {
+                        selectedVariantId = variantId;
+                    }
+                    updateSelection();
+                    
+                    // Update styling
+                    document.querySelectorAll('.variant-radio').forEach(label => {
+                        if (label.querySelector('input[name="color"]') === this) {
+                            label.classList.add('selected');
+                        } else if (label.querySelector('input[name="color"]')) {
+                            label.classList.remove('selected');
+                        }
+                    });
+                }
+            });
+        });
+        
+        updateSelection();
+    }
+    
+    // Escape HTML helper
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // Fetch product details via AJAX
     async function loadProductDetails(productId) {
         try {
             const response = await fetch(`?ajax_product_id=${productId}`, {
@@ -904,32 +1183,52 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 // Update basic product info
                 document.getElementById('modalProductName').innerText = data.product.name;
-                document.getElementById('modalDescription').innerText = data.product.description || 'No description available.';
+                document.getElementById('modalDescription').innerHTML = escapeHtml(data.product.description || 'No description available.');
                 document.getElementById('modalCategory').innerHTML = data.product.category_gender;
                 document.getElementById('modalRating').innerHTML = '<i class="bi bi-star-fill me-1"></i>' + parseFloat(data.product.avg_rating || 0).toFixed(1);
                 document.getElementById('modalReviewCount').innerText = '(' + (data.product.review_count || 0) + ' reviews)';
                 
-                // Store variants and render
+                // Store variants
                 currentVariants = data.variants;
+                
                 if (currentVariants.length > 0) {
-                    renderVariants(currentVariants);
-                    // Auto-select first variant with stock, or first variant
-                    let defaultVariant = currentVariants.find(v => v.stock_qty > 0) || currentVariants[0];
-                    if (defaultVariant) {
-                        updateModalForVariant(defaultVariant.variant_id);
+                    // Reset selections
+                    selectedSize = null;
+                    selectedColor = null;
+                    selectedVariantId = null;
+                    
+                    // Get unique sizes and render
+                    const uniqueSizes = getUniqueSizes(currentVariants);
+                    renderSizes(uniqueSizes, currentVariants);
+                    
+                    // Reset color group
+                    document.getElementById('colorRadioGroup').innerHTML = '<div class="text-muted">Please select a size first</div>';
+                    document.getElementById('modalPrice').innerHTML = '₱0.00';
+                    document.getElementById('modalStockDisplay').innerHTML = '';
+                    document.getElementById('modalAddToCartBtn').disabled = true;
+                    document.getElementById('modalAddToCartBtn').innerHTML = 'Select Size & Color';
+                    
+                    // Set default price range display
+                    const minPrice = Math.min(...currentVariants.map(v => v.price));
+                    const maxPrice = Math.max(...currentVariants.map(v => v.price));
+                    if (minPrice !== maxPrice) {
+                        document.getElementById('modalPrice').innerHTML = `₱${minPrice.toFixed(2)} - ₱${maxPrice.toFixed(2)}`;
+                    } else {
+                        document.getElementById('modalPrice').innerHTML = `₱${minPrice.toFixed(2)}`;
                     }
                 } else {
-                    document.getElementById('variantsContainer').innerHTML = '<div class="text-muted">No variants available</div>';
-                    document.getElementById('modalVariantId').value = '';
+                    document.getElementById('sizeRadioGroup').innerHTML = '<div class="text-muted">No variants available</div>';
+                    document.getElementById('colorRadioGroup').innerHTML = '';
                     document.getElementById('modalAddToCartBtn').disabled = true;
+                    document.getElementById('modalAddToCartBtn').innerHTML = 'No Variants Available';
                 }
             } else {
                 console.error('Failed to load product:', data.message);
-                document.getElementById('variantsContainer').innerHTML = '<div class="text-danger">Error loading product details</div>';
+                document.getElementById('sizeRadioGroup').innerHTML = '<div class="text-danger">Error loading product details</div>';
             }
         } catch (error) {
             console.error('AJAX error:', error);
-            document.getElementById('variantsContainer').innerHTML = '<div class="text-danger">Failed to load product details</div>';
+            document.getElementById('sizeRadioGroup').innerHTML = '<div class="text-danger">Failed to load product details</div>';
         }
     }
     
@@ -940,7 +1239,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (productId) {
                 // Reset modal state
                 document.getElementById('modalProductName').innerText = 'Loading...';
-                document.getElementById('variantsContainer').innerHTML = '<div class="text-muted">Loading variants...</div>';
+                document.getElementById('modalImageContainer').innerHTML = '<i class="bi bi-bag-heart" id="modalProductIcon"></i>';
+                document.getElementById('sizeRadioGroup').innerHTML = '<div class="text-muted">Loading sizes...</div>';
+                document.getElementById('colorRadioGroup').innerHTML = '<div class="text-muted">Loading colors...</div>';
                 document.getElementById('modalVariantId').value = '';
                 selectedVariantId = null;
                 loadProductDetails(productId);
@@ -954,7 +1255,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     qtyInput.addEventListener('change', function() {
         let val = parseInt(this.value);
-        const maxStock = currentVariants.find(v => v.variant_id == selectedVariantId)?.stock_qty || 0;
+        const currentVariant = currentVariants.find(v => v.variant_id == selectedVariantId);
+        const maxStock = currentVariant?.stock_qty || 0;
         if (isNaN(val) || val < 1) val = 1;
         if (maxStock > 0 && val > maxStock) val = maxStock;
         this.value = val;
@@ -971,17 +1273,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const quantity = parseInt(document.getElementById('modalQuantity').value);
         
         if (!variantId || variantId == '') {
-            const hint = document.getElementById('modalVariantHint');
-            hint.innerHTML = '<span class="text-danger">Please select a product variant first!</span>';
-            setTimeout(() => {
-                document.getElementById('modalVariantHint').innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Ready to add';
-            }, 2000);
+            showToast('Please select a size and color first!', false);
             return;
         }
         
         const variant = currentVariants.find(v => v.variant_id == variantId);
         if (variant && variant.stock_qty < quantity) {
-            alert(`Only ${variant.stock_qty} items available in stock.`);
+            showToast(`Only ${variant.stock_qty} items available in stock.`, false);
             return;
         }
         
@@ -1003,25 +1301,52 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await response.json();
             
             if (result.success) {
-                // Show success message
-                const successDiv = document.createElement('div');
-                successDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                successDiv.style.zIndex = '9999';
-                successDiv.style.minWidth = '300px';
-                successDiv.innerHTML = `✓ ${result.message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
-                document.body.appendChild(successDiv);
-                setTimeout(() => successDiv.remove(), 3000);
+                showToast(result.message, true);
                 
                 // Close modal
                 const bsModal = bootstrap.Modal.getInstance(modal);
                 if (bsModal) bsModal.hide();
             } else {
-                alert(result.message || 'Failed to add to cart. Please try again.');
+                showToast(result.message || 'Failed to add to cart. Please try again.', false);
             }
         } catch (err) {
             console.error('Add to cart error:', err);
-            alert('An error occurred. Please try again.');
+            showToast('An error occurred. Please try again.', false);
         }
+    });
+    
+    // Handle simple add to cart forms
+    document.querySelectorAll('.add-to-cart-simple').forEach(form => {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const params = new URLSearchParams();
+            params.append('add_to_cart_variant_id', formData.get('add_to_cart_variant_id'));
+            params.append('quantity', formData.get('quantity') || '1');
+            
+            try {
+                const response = await fetch('', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params.toString()
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message, true);
+                } else {
+                    showToast(result.message || 'Failed to add to cart', false);
+                }
+            } catch (err) {
+                console.error('Add to cart error:', err);
+                showToast('An error occurred', false);
+            }
+        });
     });
 });
 </script>

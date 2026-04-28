@@ -156,7 +156,6 @@ th {
 
   <a href="logi_dashboard.php" class="<?php echo $current_page == 'logi_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
   <a href="logi_orders.php" class="<?php echo $current_page == 'logi_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="logi_tracking.php" class="<?php echo $current_page == 'logi_tracking.php' ? 'active' : ''; ?>"><i class="fas fa-truck-fast"></i><span class="text">Tracking</span></a>
   <a href="logi_reports.php" class="<?php echo $current_page == 'logi_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
   <a href="logi_settings.php" class="<?php echo $current_page == 'logi_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   
