@@ -1,175 +1,273 @@
+<?php
+require_once 'auth.php';
+require_roles([1]);
+require_once 'admin/db.connect.php';
+
+
+// Fetch session timeout from database
+$query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
+$result = mysqli_query($conn, $query);
+$row = mysqli_fetch_assoc($result);
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; // Default to 30 if no settings
+
+// Check session timeout
+if (!isset($_SESSION['last_activity'])) {
+  $_SESSION['last_activity'] = time();
+} elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
+  // Session expired, logout
+  session_unset();
+  session_destroy();
+  header("Location: login.php");
+  exit;
+} else {
+  // Update last activity
+  $_SESSION['last_activity'] = time();
+}
+
+// Calculate timeout in milliseconds for client-side auto-logout
+$timeout_ms = $timeout_minutes * 60 * 1000;
+?>
+
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<title>Admin Dashboard</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <meta charset="UTF-8">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<link rel="stylesheet" href="sidebar.css">
+  <link rel="stylesheet" href="sidebar.css">
 
-<style>
-/* ONLY NON-SIDEBAR STYLES HERE */
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #fdf2f6;
-}
+  <script>
+    const timeoutMs = <?php echo $timeout_ms; ?>;
+    let logoutTimer;
 
-/* CONTENT */
-.container {
-  margin-left: 240px;
-  padding: 20px;
-  transition: margin-left 0.3s ease;
-}
+    function resetTimer() {
+      clearTimeout(logoutTimer);
+      logoutTimer = setTimeout(function() {
+        alert("Session expired due to inactivity. You will be logged out.");
+        window.location.href = "logout.php";
+      }, timeoutMs);
+    }
 
-.container.full {
-  margin-left: 70px;
-}
+    document.addEventListener("mousemove", resetTimer);
+    document.addEventListener("keypress", resetTimer);
+    document.addEventListener("click", resetTimer);
+    document.addEventListener("scroll", resetTimer);
 
-/* GRID */
-.grid {
-  display: grid;
-  gap: 20px;
-}
+    resetTimer();
+  </script>
 
-.grid-4 {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
+  <style>
+    /* ONLY NON-SIDEBAR STYLES HERE */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #fdf2f6;
+    }
 
-.grid-3 {
-  grid-template-columns: 2fr 1fr;
-}
+    /* CONTENT */
+    .container {
+      margin-left: 240px;
+      padding: 20px;
+      transition: margin-left 0.3s ease;
+    }
 
-/* CARDS */
-.card {
-  background: #610C27;
-  color: white;
-  padding: 20px;
-  border-radius: 12px;
-}
+    .container.full {
+      margin-left: 70px;
+    }
 
-.flex {
-  display: flex;
-  justify-content: space-between;
-}
+    /* GRID */
+    .grid {
+      display: grid;
+      gap: 20px;
+    }
 
-.growth { color: #4ade80; }
-.warning { color: orange; }
+    .grid-4 {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
 
-/* BOX */
-.box {
-  background: #EFECE9;
-  padding: 20px;
-  border-radius: 12px;
-}
+    .grid-3 {
+      grid-template-columns: 2fr 1fr;
+    }
 
-/* ACTIVITY */
-.activity-item {
-  display: flex;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid #ddd;
-}
+    /* CARDS */
+    .card {
+      background: #610C27;
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+    }
 
-.icon {
-  width: 30px;
-  text-align: center;
-}
-h1 {
-  color: #610C27;
-}
-</style>
+    .flex {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .growth {
+      color: #4ade80;
+    }
+
+    .warning {
+      color: orange;
+    }
+
+    /* BOX */
+    .box {
+      background: #EFECE9;
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    /* ACTIVITY */
+    .activity-item {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .icon {
+      width: 30px;
+      text-align: center;
+    }
+
+    h1 {
+      color: #610C27;
+    }
+  </style>
 </head>
 
 <body>
 
-<?php $current_page = basename($_SERVER['PHP_SELF']); ?>
-<!-- SIDEBAR -->
-<div class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
-    <h2 class="logo-text">Admin</h2>
+  <?php $current_page = basename($_SERVER['PHP_SELF']); ?>
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
+      <h2 class="logo-text">Admin</h2>
+    </div>
+
+    <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i
+        class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+    <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i
+        class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+    <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i
+        class="fas fa-users"></i><span class="text">Users</span></a>
+    <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i
+        class="fas fa-box"></i><span class="text">Products</span></a>
+    <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i
+        class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+    <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i
+        class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+
+    <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i
+        class="fas fa-gear"></i><span class="text">Settings</span></a>
+
+    <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
   </div>
 
-  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
-  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="admin_approvals.php" class="<?php echo $current_page == 'admin_approvals.php' ? 'active' : ''; ?>"><i class="fas fa-user-check"></i><span class="text">Approvals</span></a>
-  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
-  
-  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
-</div>
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById("sidebar");
+      const main = document.getElementById("main");
+      if (sidebar) sidebar.classList.toggle("collapsed");
+      if (main) main.classList.toggle("full");
+    }
+  </script>
 
-<script>
-function toggleSidebar() {
-  const sidebar = document.getElementById("sidebar");
-  const main = document.getElementById("main");
-  if (sidebar) sidebar.classList.toggle("collapsed");
-  if (main) main.classList.toggle("full");
-}
-</script>
+  <!-- CONTENT -->
+  <div class="container" id="main">
 
-<!-- CONTENT -->
-<div class="container" id="main">
+    <h1>Platform Overview</h1>
+    <p>Global metrics and system health.</p>
 
-<h1>Platform Overview</h1>
-<p>Global metrics and system health.</p>
+    <div class="grid grid-4">
 
-<div class="grid grid-4">
+      <div class="card"><small>Total Users</small>
+        <div class="flex">
+          <h2>24,592</h2><span class="growth">+12%</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Total Users</small><div class="flex"><h2>24,592</h2><span class="growth">+12%</span></div></div>
+      <div class="card"><small>Total Sellers</small>
+        <div class="flex">
+          <h2>1,204</h2><span class="growth">+3%</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Total Sellers</small><div class="flex"><h2>1,204</h2><span class="growth">+3%</span></div></div>
+      <div class="card"><small>Platform Revenue</small>
+        <div class="flex">
+          <h2>₱845.2K</h2><span class="growth">+18%</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Platform Revenue</small><div class="flex"><h2>₱845.2K</h2><span class="growth">+18%</span></div></div>
+      <div class="card"><small>Total Orders</small>
+        <div class="flex">
+          <h2>12,490</h2><span class="growth">+8%</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Total Orders</small><div class="flex"><h2>12,490</h2><span class="growth">+8%</span></div></div>
+      <div class="card"><small>Active Sellers</small>
+        <div class="flex">
+          <h2>842</h2><span class="growth">+5%</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Active Sellers</small><div class="flex"><h2>842</h2><span class="growth">+5%</span></div></div>
+      <div class="card"><small>Pending Approvals</small>
+        <div class="flex">
+          <h2>15</h2><span class="warning">Needs action</span>
+        </div>
+      </div>
 
-  <div class="card"><small>Pending Approvals</small><div class="flex"><h2>15</h2><span class="warning">Needs action</span></div></div>
+    </div>
 
-</div>
+    <br>
 
-<br>
+    <div class="grid grid-3">
 
-<div class="grid grid-3">
+      <div class="box">
+        <h3>Revenue Growth</h3>
+        <canvas id="chart"></canvas>
+      </div>
 
-  <div class="box">
-    <h3>Revenue Growth</h3>
-    <canvas id="chart"></canvas>
+      <div class="box">
+        <h3>Recent Activity</h3>
+        <div class="activity-item">
+          <div class="icon">👤</div>New user registered
+        </div>
+        <div class="activity-item">
+          <div class="icon">✔</div>Seller approved
+        </div>
+      </div>
+
+    </div>
+
   </div>
 
-  <div class="box">
-    <h3>Recent Activity</h3>
-    <div class="activity-item"><div class="icon">👤</div>New user registered</div>
-    <div class="activity-item"><div class="icon">✔</div>Seller approved</div>
-  </div>
+  <script>
 
-</div>
 
-</div>
 
-<script>
-new Chart(document.getElementById('chart'), {
-  type: 'line',
-  data: {
-    labels: ['Jan','Feb','Mar','Apr','May','Jun'],
-    datasets: [{
-      data: [4000,3000,5000,2780,8900,12390],
-      borderColor: '#610C27',
-      backgroundColor: 'rgba(97,12,39,0.2)',
-      fill: true
-    }]
-  }
-});
-</script>
+    new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        datasets: [{
+          data: [4000, 3000, 5000, 2780, 8900, 12390],
+          borderColor: '#610C27',
+          backgroundColor: 'rgba(97,12,39,0.2)',
+          fill: true
+        }]
+      }
+    });
+
+
+  </script>
 
 </body>
+
 </html>

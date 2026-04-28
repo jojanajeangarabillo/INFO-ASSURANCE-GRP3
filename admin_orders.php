@@ -1,3 +1,32 @@
+<?php
+require_once 'auth.php';
+require_roles([1]);
+require_once 'admin/db.connect.php';
+// Fetch session timeout from database
+$query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
+$result = mysqli_query($conn, $query);
+$row = mysqli_fetch_assoc($result);
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
+
+// Check session timeout
+if (!isset($_SESSION['last_activity'])) {
+  $_SESSION['last_activity'] = time();
+} elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
+  // Session expired, logout
+  session_unset();
+  session_destroy();
+  header("Location: login.php");
+  exit;
+} else {
+  // Update last activity
+  $_SESSION['last_activity'] = time();
+}
+
+// Calculate timeout in milliseconds for client-side auto-logout
+$timeout_ms = $timeout_minutes * 60 * 1000;
+
+
+?>
 
 <!DOCTYPE html>
 <html lang="en">
@@ -9,6 +38,25 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <link rel="stylesheet" href="sidebar.css">
+<script>
+    const timeoutMs = <?php echo $timeout_ms; ?>;
+    let logoutTimer;
+
+    function resetTimer() {
+      clearTimeout(logoutTimer);
+      logoutTimer = setTimeout(function() {
+        alert("Session expired due to inactivity. You will be logged out.");
+        window.location.href = "logout.php";
+      }, timeoutMs);
+    }
+
+    document.addEventListener("mousemove", resetTimer);
+    document.addEventListener("keypress", resetTimer);
+    document.addEventListener("click", resetTimer);
+    document.addEventListener("scroll", resetTimer);
+
+    resetTimer();
+  </script>
 
 <style>
 body {
@@ -129,7 +177,7 @@ h1 {
   <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i class="fas fa-box"></i><span class="text">Products</span></a>
   <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
   <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
-  <a href="admin_approvals.php" class="<?php echo $current_page == 'admin_approvals.php' ? 'active' : ''; ?>"><i class="fas fa-user-check"></i><span class="text">Approvals</span></a>
+  
   <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   
   <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
