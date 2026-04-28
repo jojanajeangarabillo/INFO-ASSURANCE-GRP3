@@ -1,7 +1,7 @@
 <?php
 
 class PaymentController {
-    private $secret_key = '';
+    private $secret_key = 'sk_test_ey8ELcnLA6uGacpP5Hnrpjj1';
 
     /**
      * Create a PayMongo Checkout Session
