@@ -83,7 +83,7 @@ try {
         INSERT INTO order_item (
             order_id, product_id, variant_id, seller_id, 
             quantity, unit_price, line_total
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?) 
     ");
     foreach ($cartItems as $item) {
         $lineTotal = $item['price'] * $item['quantity'];

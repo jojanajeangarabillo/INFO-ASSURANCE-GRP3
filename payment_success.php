@@ -13,7 +13,7 @@ if (!$orderId) {
 }
 
 // 1. Update Order Status
-$updateStmt = $conn->prepare("UPDATE orders SET order_status = 'paid', payment_status = 'paid' WHERE order_id = ? AND customer_id = ?");
+$updateStmt = $conn->prepare("UPDATE orders SET order_status = 'pending', payment_status = 'paid' WHERE order_id = ? AND customer_id = ?");
 $updateStmt->bind_param("ii", $orderId, $customerId);
 $updateStmt->execute();
 
@@ -37,7 +37,7 @@ if ($cartResult) {
 // Clear session variables
 unset($_SESSION['last_order_id']);
 unset($_SESSION['last_order_number']);
-
+ 
 ?>
 <!DOCTYPE html>
 <html lang="en">

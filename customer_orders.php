@@ -1,6 +1,30 @@
 <?php
 require_once 'auth.php';
 require_roles([2, 4]);
+require_once 'admin/db.connect.php';
+
+$customerId = (int) $_SESSION['user_id'];
+$customerName = current_user_name();
+
+  // Fetch orders
+  $orderStmt = $conn->prepare("
+      SELECT 
+          order_id, 
+          order_number, 
+          created_at as order_date, 
+          total_amount as total, 
+          order_status as status 
+      FROM orders 
+      WHERE customer_id = ? 
+      ORDER BY created_at DESC
+  ");
+  $orderStmt->bind_param("i", $customerId);
+  $orderStmt->execute();
+  $orders = $orderStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+  // Close the database connection
+  $conn->close();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -334,7 +358,7 @@ require_roles([2, 4]);
         </div>
         <div class="d-flex gap-2 align-items-center">
           <div class="total-count-badge" id="orderCountBadge">
-            <i class="bi bi-receipt"></i> <span id="visibleOrderCount">2</span> orders
+            <i class="bi bi-receipt"></i> <span id="visibleOrderCount"><?php echo count($orders); ?></span> orders
           </div>
         </div>
       </div>
@@ -380,31 +404,23 @@ require_roles([2, 4]);
               </tr>
             </thead>
             <tbody id="ordersTableBody">
-              <tr class="order-row" data-order-id="ORD-9021" data-status="Delivered">
-                <td class="order-id fw-semibold">ORD-9021</td>
-                <td>Oct 24, 2023</td>
-                <td class="fw-semibold">₱21,899</td>
-                <td><span class="badge-status badge-delivered"><i class="bi bi-check-circle-fill me-1"></i> Delivered</span></td>
+              <?php foreach($orders as $order): 
+                $statusClass = strtolower($order['status']);
+                $displayStatus = ucfirst($order['status']);
+                $formattedDate = date('M d, Y', strtotime($order['order_date']));
+              ?>
+              <tr class="order-row" data-order-id="<?php echo htmlspecialchars($order['order_number']); ?>" data-status="<?php echo htmlspecialchars($displayStatus); ?>">
+                <td class="order-id fw-semibold"><?php echo htmlspecialchars($order['order_number']); ?></td>
+                <td><?php echo $formattedDate; ?></td>
+                <td class="fw-semibold">₱<?php echo number_format($order['total'], 2); ?></td>
+                <td><span class="badge-status badge-<?php echo $statusClass; ?>"><i class="bi bi-check-circle-fill me-1"></i> <?php echo $displayStatus; ?></span></td>
               </tr>
-              <tr class="order-row" data-order-id="ORD-8943" data-status="Processing">
-                <td class="order-id fw-semibold">ORD-8943</td>
-                <td>Oct 12, 2023</td>
-                <td class="fw-semibold">₱4,500</td>
-                <td><span class="badge-status badge-processing"><i class="bi bi-clock-history me-1"></i> Processing</span></td>
+              <?php endforeach; ?>
+              <?php if(empty($orders)): ?>
+              <tr>
+                <td colspan="4" class="text-center py-4 text-muted">No orders found.</td>
               </tr>
-    
-              <tr class="order-row" data-order-id="ORD-9105" data-status="Delivered">
-                <td class="order-id fw-semibold">ORD-9105</td>
-                <td>Nov 02, 2023</td>
-                <td class="fw-semibold">₱8,750</td>
-                <td><span class="badge-status badge-delivered"><i class="bi bi-check-circle-fill me-1"></i> Delivered</span></td>
-              </tr>
-              <tr class="order-row" data-order-id="ORD-9287" data-status="Processing">
-                <td class="order-id fw-semibold">ORD-9287</td>
-                <td>Nov 05, 2023</td>
-                <td class="fw-semibold">₱12,300</td>
-                <td><span class="badge-status badge-processing"><i class="bi bi-clock-history me-1"></i> Processing</span></td>
-              </tr>
+              <?php endif; ?>
             </tbody>
           </table>
         </div>

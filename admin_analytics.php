@@ -157,8 +157,9 @@ function toggleSidebar() {
 </div>
 
 <script>
-new Chart(document.getElementById('revenueChart'), {
+new Chart(document.getElementById('revenueChart'), {});
 </script>
+
 
 </body>
 </html>

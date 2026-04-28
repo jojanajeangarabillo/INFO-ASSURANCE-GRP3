@@ -1,15 +1,15 @@
 <?php
 
 class PaymentController {
-    private $secret_key = 'sk_test_ey8ELcnLA6uGacpP5Hnrpjj1';
+    private $secret_key = '';
 
     /**
      * Create a PayMongo Checkout Session
      * 
-     * @param float $amount Total amount in PHP
-     * @param array $items Array of items (name, quantity, amount)
-     * @param string $description Description for the transaction
-     * @return string|null Checkout URL or null on failure
+     * @param float $amount 
+     * @param array $items 
+     * @param string $description 
+     * @return string|null 
      */
     public function createCheckoutSession($amount, $items, $description = "J3RS Order Payment") {
         $url = "https://api.paymongo.com/v1/checkout_sessions";
