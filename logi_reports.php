@@ -51,9 +51,7 @@ body {
     <i class="fas fa-cart-shopping"></i><span class="text">Orders</span>
   </a>
 
-  <a href="logi_tracking.php" class="<?= $current_page == 'logi_tracking.php' ? 'active' : '' ?>">
-    <i class="fas fa-truck-fast"></i><span class="text">Tracking</span>
-  </a>
+ 
 
   <a href="logi_reports.php" class="<?= $current_page == 'logi_reports.php' ? 'active' : '' ?>">
     <i class="fas fa-file-lines"></i><span class="text">Reports</span>

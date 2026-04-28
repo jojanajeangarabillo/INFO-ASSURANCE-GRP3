@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     $response = ['success' => false, 'message' => 'Invalid action'];
     
     if ($action === 'get_cart') {
-        // Get cart items with product and variant details
+        // Get cart items with product and variant details including images
         $cartStmt = $conn->prepare("
             SELECT 
                 ci.cart_item_id,
@@ -24,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                 pv.size,
                 pv.color,
                 pv.stock_qty,
+                pv.image_path,
                 p.product_id,
                 p.name as product_name,
                 p.category_gender
@@ -43,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
         foreach ($cartItems as $item) {
             $itemTotal = $item['price'] * $item['quantity'];
             $subtotal += $itemTotal;
+            
+            // Use image from variant table only
+            $imagePath = !empty($item['image_path']) ? $item['image_path'] : '';
+            
             $items[] = [
                 'cart_item_id' => $item['cart_item_id'],
                 'variant_id' => $item['variant_id'],
@@ -54,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                 'quantity' => (int) $item['quantity'],
                 'stock_qty' => (int) $item['stock_qty'],
                 'item_total' => $itemTotal,
-                'category' => $item['category_gender']
+                'category' => $item['category_gender'],
+                'image_path' => $imagePath
             ];
         }
         
@@ -124,6 +130,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
         } else {
             $response = ['success' => false, 'message' => 'Invalid item'];
         }
+    } elseif ($action === 'checkout_selected') {
+        $selectedItems = json_decode($_POST['selected_items'] ?? '[]', true);
+        if (empty($selectedItems)) {
+            $response = ['success' => false, 'message' => 'No items selected'];
+            echo json_encode($response);
+            exit;
+        }
+        
+        // Store selected items in session for checkout
+        $_SESSION['checkout_items'] = $selectedItems;
+        $response = ['success' => true, 'message' => 'Proceeding to checkout'];
     }
     
     echo json_encode($response);
@@ -140,6 +157,7 @@ $cartStmt = $conn->prepare("
         pv.size,
         pv.color,
         pv.stock_qty,
+        pv.image_path,
         p.product_id,
         p.name as product_name,
         p.category_gender
@@ -245,7 +263,21 @@ foreach ($cartItems as $item) {
     margin-bottom: 1rem;
     transition: all 0.2s;
   }
+  
+  .cart-item-card.selected {
+    background: #fef8f0;
+    border: 2px solid #6e0f25;
+    box-shadow: 0 6px 14px rgba(110, 15, 37, 0.1);
+  }
 
+  .product-image {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 16px;
+    background: #f8f1ea;
+  }
+  
   .product-icon {
     width: 64px;
     height: 64px;
@@ -360,6 +392,25 @@ foreach ($cartItems as $item) {
     background: #6e0f25;
     transform: scale(0.98);
   }
+  
+  .btn-checkout-custom:disabled {
+    background: #b8b8b8;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .select-all-checkbox {
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+  }
+  
+  .item-checkbox {
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+  }
 
   .continue-shopping-link {
     font-weight: 500;
@@ -405,6 +456,14 @@ foreach ($cartItems as $item) {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     border-left: 4px solid #6e0f25;
   }
+  
+  .selection-header {
+    background: white;
+    border-radius: 16px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    border: 1px solid #efe3d8;
+  }
 </style>
 </head>
 <body>
@@ -419,7 +478,7 @@ foreach ($cartItems as $item) {
   <a href="customer_profile.php"><i class="bi bi-person-circle"></i><span class="text">Profile</span></a>
   <a href="customer_home.php"><i class="bi bi-house"></i><span class="text">Home</span></a>
   <a href="customer_orders.php"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
-  <a href="customer_cart.php"><i class="bi bi-cart-check"></i><span class="text">Cart</span></a>
+  <a href="customer_cart.php" class="active"><i class="bi bi-cart-check"></i><span class="text">Cart</span></a>
   
   <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>
@@ -661,6 +720,44 @@ async function removeItem(cartItemId) {
     }
 }
 
+async function proceedToCheckout(selectedItems) {
+    if (selectedItems.length === 0) {
+        showToast('Please select at least one item to checkout', true);
+        return false;
+    }
+    
+    try {
+        const formData = new URLSearchParams();
+        formData.append('action', 'checkout_selected');
+        formData.append('selected_items', JSON.stringify(selectedItems));
+        
+        const response = await fetch('', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData.toString()
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showToast('Proceeding to checkout...');
+            setTimeout(() => {
+                window.location.href = 'customer_checkout.php';
+            }, 1000);
+            return true;
+        } else {
+            showToast(data.message || 'Failed to proceed', true);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error during checkout:', error);
+        showToast('Error proceeding to checkout', true);
+        return false;
+    }
+}
+
 function renderCart(data) {
     const root = document.getElementById('cartRoot');
     if (!root) return;
@@ -684,20 +781,27 @@ function renderCart(data) {
     }
     
     let itemsHtml = '';
-    items.forEach(item => {
+    items.forEach((item, index) => {
         const itemTotal = item.price * item.quantity;
         const isLowStock = item.stock_qty <= 5 && item.stock_qty > 0;
         const outOfStock = item.stock_qty <= 0;
+        const imagePath = item.image_path && item.image_path !== '' ? item.image_path : null;
         
         itemsHtml += `
-            <div class="cart-item-card" data-cart-item-id="${item.cart_item_id}">
+            <div class="cart-item-card" data-cart-item-id="${item.cart_item_id}" data-item-index="${index}">
                 <div class="row align-items-center g-3">
-                    <div class="col-md-2 col-3">
-                        <div class="product-icon">
-                            <i class="bi bi-bag"></i>
-                        </div>
+                    <div class="col-auto">
+                        <input type="checkbox" class="item-checkbox" data-id="${item.cart_item_id}" data-price="${item.price}" data-quantity="${item.quantity}" ${outOfStock ? 'disabled' : 'checked'}>
                     </div>
-                    <div class="col-md-4 col-9">
+                    <div class="col-md-2 col-4">
+                        ${imagePath ? 
+                            `<img src="${escapeHtml(imagePath)}" class="product-image" alt="${escapeHtml(item.product_name)}" onerror="this.src='https://placehold.co/80x80?text=No+Image'">` : 
+                            `<div class="product-icon">
+                                <i class="bi bi-bag"></i>
+                            </div>`
+                        }
+                    </div>
+                    <div class="col-md-4 col-8">
                         <div class="product-title">${escapeHtml(item.product_name)}</div>
                         <div class="product-variant">
                             <i class="bi bi-palette-fill me-1" style="font-size:0.7rem;"></i> ${escapeHtml(item.size)} / ${escapeHtml(item.color)}
@@ -716,7 +820,7 @@ function renderCart(data) {
                             <button class="remove-btn" data-id="${item.cart_item_id}"><i class="bi bi-trash3 me-1"></i> Remove</button>
                         </div>
                     </div>
-                    <div class="col-md-3 col-6 text-md-end">
+                    <div class="col-md-2 col-6 text-end">
                         <div class="fw-bold fs-6">${formatPHP(itemTotal)}</div>
                     </div>
                 </div>
@@ -735,6 +839,20 @@ function renderCart(data) {
             </div>
         </div>
         
+        <div class="selection-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox">
+                    <label for="selectAllCheckbox" class="mb-0 fw-semibold">Select All Items</label>
+                </div>
+                <div>
+                    <button id="deleteSelectedBtn" class="btn btn-link text-danger text-decoration-none">
+                        <i class="bi bi-trash3"></i> Delete Selected
+                    </button>
+                </div>
+            </div>
+        </div>
+        
         <div class="row g-4">
             <div class="col-lg-8">
                 ${itemsHtml}
@@ -743,8 +861,12 @@ function renderCart(data) {
                 <div class="order-summary-card">
                     <h5 class="fw-bold mb-3">Order Summary</h5>
                     <div class="summary-row">
+                        <span>Selected Items</span>
+                        <span id="selectedCount">0</span>
+                    </div>
+                    <div class="summary-row">
                         <span>Subtotal</span>
-                        <span>${formatPHP(subtotal)}</span>
+                        <span id="selectedSubtotal">₱0.00</span>
                     </div>
                     <div class="summary-row">
                         <span>Shipping</span>
@@ -752,9 +874,9 @@ function renderCart(data) {
                     </div>
                     <div class="total-row d-flex justify-content-between">
                         <span>Total</span>
-                        <span class="fw-bold">${formatPHP(total)}</span>
+                        <span class="fw-bold" id="selectedTotal">₱0.00</span>
                     </div>
-                    <button class="btn btn-checkout-custom mt-4" id="proceedCheckoutBtn">Proceed to Checkout →</button>
+                    <button class="btn btn-checkout-custom mt-4" id="proceedCheckoutBtn">Checkout Selected Items →</button>
                 </div>
             </div>
         </div>
@@ -762,7 +884,113 @@ function renderCart(data) {
     
     root.innerHTML = fullHtml;
     
-    // Attach event listeners
+    // Store items data globally for selection calculations
+    window.cartItems = items;
+    
+    // Initialize checkboxes
+    const checkboxes = document.querySelectorAll('.item-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    
+    function updateSelectedSummary() {
+        let selectedCount = 0;
+        let selectedSubtotal = 0;
+        const selectedItems = [];
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked && !checkbox.disabled) {
+                const cartItemId = parseInt(checkbox.getAttribute('data-id'));
+                const item = window.cartItems.find(i => i.cart_item_id === cartItemId);
+                if (item) {
+                    selectedCount++;
+                    selectedSubtotal += item.price * item.quantity;
+                    selectedItems.push({
+                        cart_item_id: item.cart_item_id,
+                        variant_id: item.variant_id,
+                        quantity: item.quantity,
+                        price: item.price
+                    });
+                }
+            }
+        });
+        
+        document.getElementById('selectedCount').innerText = selectedCount;
+        document.getElementById('selectedSubtotal').innerHTML = formatPHP(selectedSubtotal);
+        document.getElementById('selectedTotal').innerHTML = formatPHP(selectedSubtotal);
+        
+        // Store selected items for checkout
+        window.selectedCheckoutItems = selectedItems;
+        
+        // Enable/disable checkout button
+        const checkoutBtn = document.getElementById('proceedCheckoutBtn');
+        if (checkoutBtn) {
+            checkoutBtn.disabled = selectedCount === 0;
+        }
+    }
+    
+    // Add event listeners to checkboxes
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateSelectedSummary();
+            
+            // Update select all checkbox state
+            if (selectAllCheckbox) {
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked || cb.disabled);
+                const anyUnchecked = Array.from(checkboxes).some(cb => !cb.checked && !cb.disabled);
+                selectAllCheckbox.checked = allChecked && !anyUnchecked;
+                selectAllCheckbox.indeterminate = !allChecked && anyUnchecked;
+            }
+            
+            // Highlight selected items
+            const cartItemCard = this.closest('.cart-item-card');
+            if (cartItemCard) {
+                if (this.checked) {
+                    cartItemCard.classList.add('selected');
+                } else {
+                    cartItemCard.classList.remove('selected');
+                }
+            }
+        });
+        
+        // Trigger initial highlight
+        if (checkbox.checked) {
+            const cartItemCard = checkbox.closest('.cart-item-card');
+            if (cartItemCard) cartItemCard.classList.add('selected');
+        }
+    });
+    
+    // Select All functionality
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            checkboxes.forEach(checkbox => {
+                if (!checkbox.disabled) {
+                    checkbox.checked = isChecked;
+                    checkbox.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+    }
+    
+    // Delete Selected button
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    if (deleteSelectedBtn) {
+        deleteSelectedBtn.addEventListener('click', async function() {
+            const selectedCheckboxes = Array.from(checkboxes).filter(cb => cb.checked && !cb.disabled);
+            if (selectedCheckboxes.length === 0) {
+                showToast('No items selected', true);
+                return;
+            }
+            
+            if (confirm(`Remove ${selectedCheckboxes.length} selected item(s) from cart?`)) {
+                for (const checkbox of selectedCheckboxes) {
+                    const cartItemId = parseInt(checkbox.getAttribute('data-id'));
+                    await removeItem(cartItemId);
+                }
+            }
+        });
+    }
+    
+    // Quantity buttons
     document.querySelectorAll('.inc-qty').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const cartItemId = parseInt(btn.getAttribute('data-id'));
@@ -799,23 +1027,24 @@ function renderCart(data) {
         });
     });
     
+    // Checkout button
     const checkoutBtn = document.getElementById('proceedCheckoutBtn');
     if (checkoutBtn) {
-        checkoutBtn.addEventListener('click', () => {
-            if (items.length === 0) {
-                showToast('Your cart is empty', true);
-                return;
+        checkoutBtn.addEventListener('click', async () => {
+            if (window.selectedCheckoutItems && window.selectedCheckoutItems.length > 0) {
+                await proceedToCheckout(window.selectedCheckoutItems);
+            } else {
+                showToast('Please select items to checkout', true);
             }
-            const totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            showToast(`Proceeding to checkout! Total: ${formatPHP(totalAmount)}`);
-            setTimeout(() => {
-                window.location.href = 'customer_checkout.php';
-            }, 1500);
         });
     }
+    
+    // Initial summary update
+    updateSelectedSummary();
 }
 
 function escapeHtml(str) {
+    if (!str) return '';
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
