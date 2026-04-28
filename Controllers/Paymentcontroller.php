@@ -1,7 +1,7 @@
 <?php
 
 class PaymentController {
-    private $secret_key = 'sk_live_1GS4oyjRRfZBDFZmgeJB9fSU';
+    private $secret_key = 'sk_test_ey8ELcnLA6uGacpP5Hnrpjj1';
 
     /**
      * Create a PayMongo Checkout Session
@@ -36,9 +36,9 @@ class PaymentController {
                     'show_line_items' => true,
                     'description' => $description,
                     'line_items' => $line_items,
-                    'payment_method_types' => ['gcash'],
-                    'success_url' => 'http://' . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/payment_success.php',
-                    'cancel_url' => 'http://' . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/customer_cart.php'
+                    'payment_method_types' => ['gcash', 'paymaya', 'grab_pay', 'card'],
+                    'success_url' => (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/payment_success.php',
+                    'cancel_url' => (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/customer_cart.php'
                 ]
             ]
         ];
