@@ -1,4 +1,6 @@
 <?php
+require_once 'auth.php';
+require_roles([1]);
 require_once 'admin/db.connect.php';
 require_once 'admin/email.helper.php';
 

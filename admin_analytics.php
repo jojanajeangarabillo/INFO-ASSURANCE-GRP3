@@ -26,6 +26,63 @@ if (!isset($_SESSION['last_activity'])) {
 
 // Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
+
+// Fetch analytics metrics
+$topCategoryStmt = $conn->prepare("
+    SELECT c.name as category_name, COUNT(oi.order_item_id) as order_count
+    FROM category c
+    LEFT JOIN product p ON c.category_id = p.category_id
+    LEFT JOIN order_item oi ON p.product_id = oi.product_id
+    LEFT JOIN orders o ON oi.order_id = o.order_id AND o.payment_status = 'paid'
+    GROUP BY c.category_id
+    ORDER BY order_count DESC
+    LIMIT 1
+");
+$topCategoryStmt->execute();
+$topCategoryResult = $topCategoryStmt->get_result()->fetch_assoc();
+$topCategory = $topCategoryResult ? $topCategoryResult['category_name'] : 'N/A';
+$topCategoryStmt->close();
+
+$avgOrderStmt = $conn->prepare("SELECT COALESCE(AVG(total_amount), 0) as avg_order FROM orders WHERE payment_status = 'paid'");
+$avgOrderStmt->execute();
+$avgOrderValue = $avgOrderStmt->get_result()->fetch_assoc()['avg_order'];
+$avgOrderStmt->close();
+
+$repeatCustomersStmt = $conn->prepare("
+    SELECT 
+        COUNT(DISTINCT user_id) as total_customers,
+        SUM(CASE WHEN order_count > 1 THEN 1 ELSE 0 END) as repeat_customers
+    FROM (
+        SELECT user_id, COUNT(*) as order_count 
+        FROM orders 
+        WHERE payment_status = 'paid' AND user_id IS NOT NULL
+        GROUP BY user_id
+    ) as customer_orders
+");
+$repeatCustomersStmt->execute();
+$repeatResult = $repeatCustomersStmt->get_result()->fetch_assoc();
+$repeatCustomers = $repeatResult['total_customers'] > 0 
+    ? round(($repeatResult['repeat_customers'] / $repeatResult['total_customers']) * 100) 
+    : 0;
+$repeatCustomersStmt->close();
+
+$sellerPerformanceStmt = $conn->prepare("
+    SELECT 
+        s.store_name,
+        COALESCE(SUM(o.total_amount), 0) as revenue,
+        COUNT(DISTINCT o.order_id) as order_count,
+        COALESCE(AVG(sr.rating), 0) as avg_rating
+    FROM seller s
+    LEFT JOIN orders o ON s.seller_id = o.seller_id AND o.payment_status = 'paid'
+    LEFT JOIN seller_review sr ON s.seller_id = sr.seller_id
+    WHERE s.is_approved = 1
+    GROUP BY s.seller_id
+    ORDER BY revenue DESC
+    LIMIT 10
+");
+$sellerPerformanceStmt->execute();
+$sellerPerformance = $sellerPerformanceStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$sellerPerformanceStmt->close();
 ?>
 
 
@@ -167,17 +224,17 @@ function toggleSidebar() {
 
   <div class="card">
     <small>Top Category</small>
-    <h2>Electronics</h2>
+    <h2><?php echo htmlspecialchars($topCategory); ?></h2>
   </div>
 
   <div class="card">
     <small>Avg Order Value</small>
-    <h2>₱3,450</h2>
+    <h2>₱<?php echo number_format($avgOrderValue, 2); ?></h2>
   </div>
 
   <div class="card">
     <small>Repeat Customers</small>
-    <h2>42%</h2>
+    <h2><?php echo number_format($repeatCustomers); ?>%</h2>
   </div>
 
 </div>
@@ -197,8 +254,18 @@ function toggleSidebar() {
       </tr>
     </thead>
     <tbody>
-      <tr><td>Seller A</td><td>₱12,000</td><td>120</td><td>4.5</td></tr>
-      <tr><td>Seller B</td><td>₱9,500</td><td>98</td><td>4.2</td></tr>
+      <?php if (empty($sellerPerformance)): ?>
+        <tr><td colspan="4" class="text-muted">No seller data available</td></tr>
+      <?php else: ?>
+        <?php foreach ($sellerPerformance as $seller): ?>
+          <tr>
+            <td><?php echo htmlspecialchars($seller['store_name']); ?></td>
+            <td>₱<?php echo number_format($seller['revenue'], 2); ?></td>
+            <td><?php echo number_format($seller['order_count']); ?></td>
+            <td><?php echo number_format($seller['avg_rating'], 1); ?></td>
+          </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </tbody>
   </table>
 

@@ -8,7 +8,7 @@ require_once 'admin/db.connect.php';
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
 $row = mysqli_fetch_assoc($result);
-$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; // Default to 30 if no settings
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
 
 // Check session timeout
 if (!isset($_SESSION['last_activity'])) {
@@ -26,6 +26,55 @@ if (!isset($_SESSION['last_activity'])) {
 
 // Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
+
+// Fetch dashboard metrics
+$totalUsersStmt = $conn->prepare("SELECT COUNT(*) as count FROM user");
+$totalUsersStmt->execute();
+$totalUsers = $totalUsersStmt->get_result()->fetch_assoc()['count'];
+$totalUsersStmt->close();
+
+$totalSellersStmt = $conn->prepare("SELECT COUNT(*) as count FROM seller");
+$totalSellersStmt->execute();
+$totalSellers = $totalSellersStmt->get_result()->fetch_assoc()['count'];
+$totalSellersStmt->close();
+
+$totalOrdersStmt = $conn->prepare("SELECT COUNT(*) as count FROM orders");
+$totalOrdersStmt->execute();
+$totalOrders = $totalOrdersStmt->get_result()->fetch_assoc()['count'];
+$totalOrdersStmt->close();
+
+$revenueStmt = $conn->prepare("SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE payment_status = 'paid'");
+$revenueStmt->execute();
+$platformRevenue = $revenueStmt->get_result()->fetch_assoc()['total'];
+$revenueStmt->close();
+
+$activeSellersStmt = $conn->prepare("SELECT COUNT(*) as count FROM seller WHERE is_approved = 1");
+$activeSellersStmt->execute();
+$activeSellers = $activeSellersStmt->get_result()->fetch_assoc()['count'];
+$activeSellersStmt->close();
+
+$pendingApprovalsStmt = $conn->prepare("SELECT COUNT(*) as count FROM seller WHERE is_approved = 0");
+$pendingApprovalsStmt->execute();
+$pendingApprovals = $pendingApprovalsStmt->get_result()->fetch_assoc()['count'];
+$pendingApprovalsStmt->close();
+
+$recentActivityStmt = $conn->prepare("SELECT al.*, u.username FROM audit_log al LEFT JOIN user u ON al.user_id = u.user_id ORDER BY al.created_at DESC LIMIT 10");
+$recentActivityStmt->execute();
+$recentActivity = $recentActivityStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$recentActivityStmt->close();
+
+$chartStmt = $conn->prepare("
+    SELECT 
+        DATE_FORMAT(created_at, '%Y-%m') as month,
+        COALESCE(SUM(total_amount), 0) as revenue
+    FROM orders 
+    WHERE payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+    GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+    ORDER BY month ASC
+");
+$chartStmt->execute();
+$chartData = $chartStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$chartStmt->close();
 ?>
 
 
@@ -189,37 +238,37 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
 
       <div class="card"><small>Total Users</small>
         <div class="flex">
-          <h2>24,592</h2><span class="growth">+12%</span>
+          <h2><?php echo number_format($totalUsers); ?></h2>
         </div>
       </div>
 
       <div class="card"><small>Total Sellers</small>
         <div class="flex">
-          <h2>1,204</h2><span class="growth">+3%</span>
+          <h2><?php echo number_format($totalSellers); ?></h2>
         </div>
       </div>
 
       <div class="card"><small>Platform Revenue</small>
         <div class="flex">
-          <h2>₱845.2K</h2><span class="growth">+18%</span>
+          <h2>₱<?php echo number_format($platformRevenue, 2); ?></h2>
         </div>
       </div>
 
       <div class="card"><small>Total Orders</small>
         <div class="flex">
-          <h2>12,490</h2><span class="growth">+8%</span>
+          <h2><?php echo number_format($totalOrders); ?></h2>
         </div>
       </div>
 
       <div class="card"><small>Active Sellers</small>
         <div class="flex">
-          <h2>842</h2><span class="growth">+5%</span>
+          <h2><?php echo number_format($activeSellers); ?></h2>
         </div>
       </div>
 
       <div class="card"><small>Pending Approvals</small>
         <div class="flex">
-          <h2>15</h2><span class="warning">Needs action</span>
+          <h2><?php echo number_format($pendingApprovals); ?></h2><span class="warning">Needs action</span>
         </div>
       </div>
 
@@ -236,12 +285,20 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
 
       <div class="box">
         <h3>Recent Activity</h3>
-        <div class="activity-item">
-          <div class="icon">👤</div>New user registered
-        </div>
-        <div class="activity-item">
-          <div class="icon">✔</div>Seller approved
-        </div>
+        <?php if (empty($recentActivity)): ?>
+          <p class="text-muted">No recent activity</p>
+        <?php else: ?>
+          <?php foreach ($recentActivity as $activity): ?>
+            <div class="activity-item">
+              <div class="icon">👤</div>
+              <div>
+                <strong><?php echo htmlspecialchars($activity['username'] ?? 'System'); ?></strong>
+                <small class="text-muted"><?php echo htmlspecialchars($activity['action']); ?></small>
+                <div><?php echo htmlspecialchars($activity['description'] ?? $activity['module']); ?></div>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
       </div>
 
     </div>
@@ -249,23 +306,21 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
   </div>
 
   <script>
-
-
+    const chartLabels = <?php echo json_encode(array_column($chartData, 'month')); ?>;
+    const chartValues = <?php echo json_encode(array_column($chartData, 'revenue')); ?>;
 
     new Chart(document.getElementById('chart'), {
       type: 'line',
       data: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        labels: chartLabels.map(l => l.substring(5)),
         datasets: [{
-          data: [4000, 3000, 5000, 2780, 8900, 12390],
+          data: chartValues,
           borderColor: '#610C27',
           backgroundColor: 'rgba(97,12,39,0.2)',
           fill: true
         }]
       }
     });
-
-
   </script>
 
 </body>

@@ -85,6 +85,11 @@ try {
             quantity, unit_price, line_total
         ) VALUES (?, ?, ?, ?, ?, ?, ?) 
     ");
+
+    // Prepare Stock Update Statements
+    $updateVariantStockStmt = $conn->prepare("UPDATE product_variant SET stock_qty = stock_qty - ? WHERE variant_id = ?");
+    $updateProductStockStmt = $conn->prepare("UPDATE product SET qty = qty - ? WHERE product_id = ?");
+
     foreach ($cartItems as $item) {
         $lineTotal = $item['price'] * $item['quantity'];
         $itemStmt->bind_param(
@@ -93,6 +98,18 @@ try {
             $item['quantity'], $item['price'], $lineTotal
         );
         $itemStmt->execute();
+
+        // Reduce stock in product_variant
+        $updateVariantStockStmt->bind_param("ii", $item['quantity'], $item['variant_id']);
+        if (!$updateVariantStockStmt->execute()) {
+            throw new Exception("Failed to update variant stock.");
+        }
+
+        // Reduce stock in product
+        $updateProductStockStmt->bind_param("ii", $item['quantity'], $item['product_id']);
+        if (!$updateProductStockStmt->execute()) {
+            throw new Exception("Failed to update product stock.");
+        }
     }
 
     // 5. Initialize PayMongo Payment
