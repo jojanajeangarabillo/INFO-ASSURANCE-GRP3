@@ -55,6 +55,104 @@ if (isset($_POST['action']) && isset($_POST['user_id'])) {
 }
 
 /* =========================
+   HANDLE ADD LOGISTIC PARTNER
+========================= */
+if (isset($_POST['add_logistic'])) {
+    $username = trim($_POST['username']);
+    $email = trim($_POST['email']);
+    $role_id = 5; // Logistic Role
+
+    // Validate inputs
+    if (empty($username) || empty($email)) {
+        header("Location: admin_users.php?error=empty_fields");
+        exit;
+    }
+
+    // Check if username or email already exists
+    $checkStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? OR email = ?");
+    $checkStmt->bind_param("ss", $username, $email);
+    $checkStmt->execute();
+    if ($checkStmt->get_result()->num_rows > 0) {
+        header("Location: admin_users.php?error=exists");
+        exit;
+    }
+
+    // Generate temporary password
+    $tempPassword = bin2hex(random_bytes(6));
+    $passwordHash = password_hash($tempPassword, PASSWORD_DEFAULT);
+
+    // Provide values for NOT NULL columns that don't have defaults
+    $empty = '';
+    $empty_expiry = '0000-00-00 00:00:00';
+    $zero = 0;
+
+    // Insert new user
+    $insertStmt = $conn->prepare("
+        INSERT INTO user (
+            username, email, password, role_id, is_activated, is_active,
+            otp_code, otp_expiry, verification_token, token_expiry, mfa_secret
+        ) VALUES (?, ?, ?, 5, 1, 1, ?, ?, ?, ?, ?)
+    ");
+    $insertStmt->bind_param("ssssssss", 
+        $username, $email, $passwordHash, 
+        $empty, $empty_expiry, $empty, $empty_expiry, $empty
+    );
+    
+    if ($insertStmt->execute()) {
+        // Send email
+        $subject = "Welcome to J3RS Logistics Team!";
+        $body = "
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; }
+                    .container { padding: 20px; background-color: #fdf2f6; }
+                    .content { background-color: white; padding: 20px; border-radius: 10px; }
+                    .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
+                    .credentials { background-color: #f9dbe5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                    .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                    .warning { color: #dc2626; font-size: 14px; margin-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class='container'>
+                    <div class='content'>
+                        <div class='header'>Logistic Partner Account Created</div>
+                        <p>Dear " . htmlspecialchars($username) . ",</p>
+                        <p>Your account as a Logistic Partner has been created by the administrator.</p>
+                        
+                        <div class='credentials'>
+                            <p><strong>Login Credentials:</strong></p>
+                            <p><strong>Username:</strong> " . htmlspecialchars($username) . "<br>
+                            <strong>Temporary Password:</strong> " . htmlspecialchars($tempPassword) . "</p>
+                            <p class='warning'><strong>Important:</strong> Please login and change your password immediately.</p>
+                        </div>
+                        
+                        <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
+                        
+                        <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        ";
+        $emailSent = send_email($email, $subject, $body);
+        
+        if ($emailSent) {
+            header("Location: admin_users.php?msg=logistic_success");
+        } else {
+            // User was created but email failed
+            header("Location: admin_users.php?msg=logistic_created_email_failed");
+        }
+    } else {
+        // Log error for debugging
+        error_log("Database error: " . $insertStmt->error);
+        header("Location: admin_users.php?error=failed");
+    }
+    exit;
+}
+
+/* =========================
    HANDLE APPROVE / REJECT (from admin_approvals.php)
 ========================= */
 if (isset($_GET['seller_action'], $_GET['id'])) {
@@ -751,14 +849,19 @@ function toggleSidebar() {
 <!-- USERS TAB -->
 <div id="users" class="tab-content">
 
-<div class="card">
-  <input type="text" id="userSearch" placeholder="Search users by name or email..." style="width:60%; padding:8px;" onkeyup="filterUsers()">
-  <select id="roleFilter" style="padding:8px;" onchange="filterUsers()">
-    <option value="All">All Roles</option>
-    <?php foreach ($roles as $r): ?>
-        <option value="<?php echo htmlspecialchars($r['role_name']); ?>"><?php echo htmlspecialchars($r['role_name']); ?></option>
-    <?php endforeach; ?>
-  </select>
+<div class="card" style="display: flex; justify-content: space-between; align-items: center;">
+  <div style="flex-grow: 1; margin-right: 15px;">
+    <input type="text" id="userSearch" placeholder="Search users by name or email..." style="width:60%; padding:8px;" onkeyup="filterUsers()">
+    <select id="roleFilter" style="padding:8px;" onchange="filterUsers()">
+      <option value="All">All Roles</option>
+      <?php foreach ($roles as $r): ?>
+          <option value="<?php echo htmlspecialchars($r['role_name']); ?>"><?php echo htmlspecialchars($r['role_name']); ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
+  <button class="btn btn-approve" onclick="openModal('addLogisticModal')" style="background: #2b5e2f; color: white; padding: 10px 20px;">
+    <i class="fas fa-plus"></i> Add Logistic Partner
+  </button>
 </div>
 
 <div class="card">
@@ -947,8 +1050,51 @@ function toggleSidebar() {
     </div>
 </div>
 
+<!-- Add Logistic Partner Modal -->
+<div id="addLogisticModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2><i class="fas fa-truck"></i> Add Logistic Partner</h2>
+            <span class="close-btn" onclick="closeModal('addLogisticModal')">&times;</span>
+        </div>
+        <form method="POST">
+            <div class="modal-body">
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Username</label>
+                    <input type="text" name="username" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Email Address</label>
+                    <input type="email" name="email" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+                <p style="color: #666; font-size: 0.85rem; background: #f9f9f9; padding: 10px; border-radius: 5px;">
+                    <i class="fas fa-info-circle"></i> A temporary password will be generated and sent to the email provided. The account will be pre-activated.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-view" onclick="closeModal('addLogisticModal')">Cancel</button>
+                <button type="submit" name="add_logistic" class="btn btn-approve" style="background: #2b5e2f; color: white;">Add Partner</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- SCRIPTS -->
 <script>
+function openModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
 let currentSellerId = null;
 
 function showTab(tab) {
@@ -1143,6 +1289,27 @@ function closeModal(id) {
 
 window.onclick = function(e) {
     if (e.target.classList.contains('modal')) e.target.style.display = 'none';
+}
+
+// Handle messages from URL
+window.onload = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const msg = urlParams.get('msg');
+    const error = urlParams.get('error');
+
+    if (msg === 'logistic_success') {
+        showSuccessPopup('Logistic Partner added successfully!');
+    } else if (msg === 'logistic_created_email_failed') {
+        showSuccessPopup('Partner created, but failed to send email.', 'error');
+    } else if (error === 'exists') {
+        showSuccessPopup('Username or Email already exists!', 'error');
+    } else if (error === 'failed') {
+        showSuccessPopup('Database error. Please try again.', 'error');
+    } else if (error === 'empty_fields') {
+        showSuccessPopup('Please fill all fields.', 'error');
+    } else if (msg === 'success') {
+        showSuccessPopup('Action completed successfully!');
+    }
 }
 </script>
 

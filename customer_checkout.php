@@ -6,25 +6,43 @@ require_once 'Controllers/Paymentcontroller.php';
 
 $customerId = (int) $_SESSION['user_id'];
 
-// 1. Fetch Cart Items
-$cartStmt = $conn->prepare("
-    SELECT 
-        ci.cart_item_id,
-        ci.variant_id,
-        ci.quantity,
-        pv.price,
-        p.product_id,
-        p.name as product_name,
-        p.seller_id
-    FROM cart_item ci
-    INNER JOIN cart c ON ci.cart_id = c.cart_id
-    INNER JOIN product_variant pv ON ci.variant_id = pv.variant_id
-    INNER JOIN product p ON pv.product_id = p.product_id
-    WHERE c.user_id = ? AND p.status = 'active'
-");
-$cartStmt->bind_param("i", $customerId);
-$cartStmt->execute();
-$cartItems = $cartStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+// 1. Fetch Cart Items (Only selected ones if available)
+$selectedItemIds = $_SESSION['checkout_items'] ?? [];
+$cartItems = [];
+
+if (!empty($selectedItemIds)) {
+    // Extract only the IDs from the session array 
+    $ids = array_map(function($item) {
+        return is_array($item) ? (int)$item['cart_item_id'] : (int)$item;
+    }, $selectedItemIds);
+    
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $types = str_repeat('i', count($ids));
+    
+    $cartStmt = $conn->prepare("
+        SELECT 
+            ci.cart_item_id,
+            ci.variant_id,
+            ci.quantity,
+            pv.price,
+            p.product_id,
+            p.name as product_name,
+            p.seller_id
+        FROM cart_item ci
+        INNER JOIN cart c ON ci.cart_id = c.cart_id
+        INNER JOIN product_variant pv ON ci.variant_id = pv.variant_id
+        INNER JOIN product p ON pv.product_id = p.product_id
+        WHERE c.user_id = ? AND p.status = 'active' AND ci.cart_item_id IN ($placeholders)
+    ");
+    
+    $params = array_merge([$customerId], $ids);
+    $cartStmt->bind_param("i" . $types, ...$params);
+    $cartStmt->execute();
+    $cartItems = $cartStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} else {
+    header("Location: customer_cart.php");
+    exit;
+}
 
 if (empty($cartItems)) {
     header("Location: customer_cart.php");
@@ -121,11 +139,14 @@ try {
         $_SESSION['last_order_id'] = $orderId;
         $_SESSION['last_order_number'] = $orderNumber;
         
+        // Store the cart item IDs to be cleared only after successful payment
+        $cartItemIdsToClear = array_column($cartItems, 'cart_item_id');
+        $_SESSION['items_to_clear'] = $cartItemIdsToClear;
+        
         $conn->commit();
         
-        // Clear cart (Optional: you might want to wait until payment is successful)
-        // But usually, checkout redirect means they are committed.
-        // We'll clear it on success page instead to be safe.
+        // Clear session checkout items
+        unset($_SESSION['checkout_items']);
         
         header("Location: " . $checkoutUrl);
         exit;

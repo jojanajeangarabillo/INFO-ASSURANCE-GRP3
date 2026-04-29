@@ -22,16 +22,17 @@ $paymentStmt = $conn->prepare("INSERT INTO payment (order_id, payment_method, pa
 $paymentStmt->bind_param("i", $orderId);
 $paymentStmt->execute();
 
-// 3. Clear Cart
-$cartIdStmt = $conn->prepare("SELECT cart_id FROM cart WHERE user_id = ?");
-$cartIdStmt->bind_param("i", $customerId);
-$cartIdStmt->execute();
-$cartResult = $cartIdStmt->get_result()->fetch_assoc();
-if ($cartResult) {
-    $cartId = $cartResult['cart_id'];
-    $clearStmt = $conn->prepare("DELETE FROM cart_item WHERE cart_id = ?");
-    $clearStmt->bind_param("i", $cartId);
+// 3. Clear only the items that were part of this order
+if (isset($_SESSION['items_to_clear']) && !empty($_SESSION['items_to_clear'])) {
+    $itemsToClear = $_SESSION['items_to_clear'];
+    $placeholders = implode(',', array_fill(0, count($itemsToClear), '?'));
+    $types = str_repeat('i', count($itemsToClear));
+    
+    $clearStmt = $conn->prepare("DELETE FROM cart_item WHERE cart_item_id IN ($placeholders)");
+    $clearStmt->bind_param($types, ...$itemsToClear);
     $clearStmt->execute();
+    
+    unset($_SESSION['items_to_clear']);
 }
 
 // Clear session variables
