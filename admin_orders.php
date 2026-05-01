@@ -6,25 +6,49 @@ require_once 'admin/db.connect.php';
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
 $row = mysqli_fetch_assoc($result);
-$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 
 // Check session timeout
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
 // Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
+// Fetch order statistics
+$stats_query = "
+    SELECT 
+        COUNT(*) AS total_orders,
+        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) AS total_revenue,
+        COUNT(CASE WHEN order_status = 'pending' OR order_status = 'processing' OR order_status = 'packed' THEN 1 END) AS pending_fulfillment
+    FROM orders
+";
+$stats_result = mysqli_query($conn, $stats_query);
+$stats = mysqli_fetch_assoc($stats_result);
+
+// Fetch all orders with customer details
+$orders_query = "
+    SELECT 
+        o.*,
+        u.username,
+        u.email AS customer_email
+    FROM orders o
+    LEFT JOIN user u ON o.customer_id = u.user_id
+    ORDER BY o.created_at DESC
+";
+$orders_result = mysqli_query($conn, $orders_query);
+$orders = [];
+while ($order = mysqli_fetch_assoc($orders_result)) {
+    $orders[] = $order;
+}
 ?>
 
 <!DOCTYPE html>
@@ -55,7 +79,7 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
     document.addEventListener("scroll", resetTimer);
 
     resetTimer();
-  </script>
+</script>
 
 <style>
 body {
@@ -145,6 +169,7 @@ tr:hover {
 .success { background: #d1fae5; color: #065f46; }
 .warning { background: #fef3c7; color: #92400e; }
 .danger { background: #fee2e2; color: #991b1b; }
+.info { background: #dbeafe; color: #1e40af; }
 
 /* BUTTON */
 .btn {
@@ -204,17 +229,17 @@ function toggleSidebar() {
 
   <div class="card">
     <small>Total Orders</small>
-    <h2>12,490</h2>
+    <h2><?php echo number_format($stats['total_orders']); ?></h2>
   </div>
 
   <div class="card">
     <small>Total Revenue</small>
-    <h2>₱845.2K</h2>
+    <h2>₱<?php echo number_format($stats['total_revenue'], 2); ?></h2>
   </div>
 
   <div class="card">
     <small>Pending Fulfillment</small>
-    <h2>342</h2>
+    <h2><?php echo number_format($stats['pending_fulfillment']); ?></h2>
   </div>
 
 </div>
@@ -223,11 +248,11 @@ function toggleSidebar() {
 
 <!-- SEARCH -->
 <div class="search-box">
-  <input type="text" placeholder="Search Order ID or Customer Email">
+  <input type="text" id="searchInput" placeholder="Search Order ID or Customer Email">
 </div>
 
 <!-- TABLE -->
-<table>
+<table id="ordersTable">
 <thead>
 <tr>
   <th>Order ID</th>
@@ -241,37 +266,46 @@ function toggleSidebar() {
 </thead>
 
 <tbody>
+<?php if (empty($orders)): ?>
+  <tr>
+    <td colspan="7" style="text-align:center; padding:40px; color:#999;">No orders found.</td>
+  </tr>
+<?php else: ?>
+  <?php foreach ($orders as $order): ?>
+    <?php
+      // Determine payment status badge
+      $payment_class = 'warning';
+      $payment_text = ucfirst($order['payment_status']);
+      if ($order['payment_status'] == 'paid') {
+          $payment_class = 'success';
+      } elseif ($order['payment_status'] == 'failed') {
+          $payment_class = 'danger';
+      }
 
-<tr>
-  <td>#GLB-991</td>
-  <td>user1@email.com</td>
-  <td>₱245.00</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge warning">Processing</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
+      // Determine order status badge
+      $order_class = 'warning';
+      $order_text = ucfirst($order['order_status']);
+      if (in_array($order['order_status'], ['delivered', 'shipped'])) {
+          $order_class = 'success';
+      } elseif (in_array($order['order_status'], ['cancelled', 'returned'])) {
+          $order_class = 'danger';
+      }
 
-<tr>
-  <td>#GLB-992</td>
-  <td>user2@email.com</td>
-  <td>₱89.50</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge success">Delivered</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
-
-<tr style="background:#fee2e2;">
-  <td>#GLB-993</td>
-  <td>suspicious@email.com</td>
-  <td>₱45,000.00</td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><span class="badge danger">Suspicious</span></td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><button class="btn">Invoice</button></td>
-</tr>
-
+      // Fraud status (placeholder - set to Safe for now)
+      $fraud_class = 'success';
+      $fraud_text = 'Safe';
+    ?>
+    <tr>
+      <td>#<?php echo htmlspecialchars($order['order_number']); ?></td>
+      <td><?php echo htmlspecialchars($order['customer_email'] ?? 'N/A'); ?></td>
+      <td>₱<?php echo number_format($order['total_amount'], 2); ?></td>
+      <td><span class="badge <?php echo $payment_class; ?>"><?php echo $payment_text; ?></span></td>
+      <td><span class="badge <?php echo $fraud_class; ?>"><?php echo $fraud_text; ?></span></td>
+      <td><span class="badge <?php echo $order_class; ?>"><?php echo $order_text; ?></span></td>
+      <td><button class="btn">Invoice</button></td>
+    </tr>
+  <?php endforeach; ?>
+<?php endif; ?>
 </tbody>
 </table>
 
@@ -281,6 +315,25 @@ function toggleSidebar() {
 function updateStatus(orderId) {
   alert('Update status for order: ' + orderId);
 }
+
+// Simple search functionality
+document.getElementById('searchInput').addEventListener('input', function() {
+    const searchTerm = this.value.toLowerCase();
+    const rows = document.querySelectorAll('#ordersTable tbody tr');
+    
+    rows.forEach(row => {
+        if (row.cells.length > 1) {
+            const orderId = row.cells[0].textContent.toLowerCase();
+            const customer = row.cells[1].textContent.toLowerCase();
+            
+            if (orderId.includes(searchTerm) || customer.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+    });
+});
 </script>
 
 </body>

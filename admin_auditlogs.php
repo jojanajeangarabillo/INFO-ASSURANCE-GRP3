@@ -2,35 +2,52 @@
 require_once 'auth.php';
 require_roles([1]);
 require_once 'admin/db.connect.php';
+
 // Fetch session timeout from database
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
 $row = mysqli_fetch_assoc($result);
-$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 
 // Check session timeout
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
-// Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
+// Fetch login history
+$loginHistoryStmt = $conn->query("
+    SELECT lh.*, u.username 
+    FROM login_history lh 
+    LEFT JOIN user u ON lh.user_id = u.user_id 
+    ORDER BY lh.login_time DESC 
+    LIMIT 100
+");
+$loginHistory = $loginHistoryStmt->fetch_all(MYSQLI_ASSOC);
+
+// Fetch audit log
+$auditLogStmt = $conn->query("
+    SELECT al.*, u.username 
+    FROM audit_log al 
+    LEFT JOIN user u ON al.user_id = u.user_id 
+    ORDER BY al.created_at DESC 
+    LIMIT 100
+");
+$auditLog = $auditLogStmt->fetch_all(MYSQLI_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Product Management</title>
+<title>Audit Logs - J3RS</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="sidebar.css">
 
@@ -52,7 +69,7 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
     document.addEventListener("scroll", resetTimer);
 
     resetTimer();
-  </script>
+</script>
 
 <style>
 body {
@@ -70,7 +87,6 @@ body {
   margin-left: 70px;
 }
 
-/* title */
 .page-title {
   font-size: 32px;
   font-weight: bold;
@@ -78,13 +94,14 @@ body {
   margin-bottom: 5px;
 }
 
-/* tabs */
 .tabs button {
-  padding: 10px;
+  padding: 10px 20px;
   border: none;
   background: none;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  font-size: 16px;
+  color: #666;
 }
 .tabs button.active {
   border-bottom: 2px solid #a61b4a;
@@ -92,71 +109,45 @@ body {
   font-weight: bold;
 }
 
-/* card */
 .card {
   background: white;
-  padding: 15px;
-  border-radius: 10px;
+  padding: 20px;
+  border-radius: 12px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
 
-/* table */
 table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 14px;
 }
 th, td {
-  padding: 12px;
-  border-bottom: 1px solid #ddd;
+  padding: 12px 15px;
+  border-bottom: 1px solid #eee;
   text-align: left;
 }
 th {
   background: #f9dbe5;
-  font-size: 13px;
   color: #610C27;
+  font-weight: bold;
 }
 
-/* badges */
 .badge {
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 12px;
+  font-weight: 500;
 }
 .success { background: #d1fae5; color: #065f46; }
-.warning { background: #fef3c7; color: #92400e; }
 .danger { background: #fee2e2; color: #991b1b; }
+.warning { background: #fef3c7; color: #92400e; }
+.info { background: #dbeafe; color: #1e40af; }
 
-/* buttons */
-.btn {
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid #ccc;
-  font-size: 14px;
-}
-.btn-primary {
-  background: #a61b4a;
-  color: white;
-  border: none;
-}
-.btn-danger {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 1px solid #fca5a5;
-}
-.mb-4 { margin-bottom: 1rem; }
+.mb-4 { margin-bottom: 1.5rem; }
 
-.tag {
-  background: #EFECE9;
-  padding: 4px 10px;
-  border-radius: 15px;
-  margin-right: 5px;
-  font-size: 12px;
-  cursor: pointer;
-}
-h1 {
-  color: #610C27;
+@media (max-width: 768px) {
+  .container { margin-left: 0; padding: 20px; }
 }
 </style>
 </head>
@@ -164,21 +155,20 @@ h1 {
 <body>
 
 <?php $current_page = basename($_SERVER['PHP_SELF']); ?>
-<!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
     <h2 class="logo-text">Admin</h2>
   </div>
 
-  <a href="admin_dashboard.php" class="<?php echo $current_page == 'admin_dashboard.php' ? 'active' : ''; ?>"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
-  <a href="admin_analytics.php" class="<?php echo $current_page == 'admin_analytics.php' ? 'active' : ''; ?>"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
-  <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i class="fas fa-users"></i><span class="text">Users</span></a>
-  <a href="admin_auditlogs.php" class="<?php echo $current_page == 'admin_auditlogs.php' ? 'active' : ''; ?>"><i class="fas fa-history"></i><span class="text">Audit Logs</span></a>
-  <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
-  <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
+  <a href="admin_dashboard.php"><i class="fas fa-table-columns"></i><span class="text">Dashboard</span></a>
+  <a href="admin_analytics.php"><i class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
+  <a href="admin_users.php"><i class="fas fa-users"></i><span class="text">Users</span></a>
+  <a href="admin_auditlogs.php" class="active"><i class="fas fa-history"></i><span class="text">Audit Logs</span></a>
+  <a href="admin_orders.php"><i class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
+  <a href="admin_reports.php"><i class="fas fa-file-lines"></i><span class="text">Reports</span></a>
   
-  <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
+  <a href="admin_settings.php"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   
   <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
@@ -190,137 +180,105 @@ function toggleSidebar() {
   if (sidebar) sidebar.classList.toggle("collapsed");
   if (main) main.classList.toggle("full");
 }
-</script>
 
-<!-- MAIN -->
-<div class="container" id="main">
-
-<h1 class="page-title">Audit Logs</h1>
-<p>Monitor and review all actions performed across the platform.</p>
-
-<!-- TABS -->
-<div class="tabs mb-4">
-  <button class="active" onclick="showTab('products')">Login History</button>
-  <button onclick="showTab('pending')">Actions History</button>
-
-</div>
-
-<!-- ALL PRODUCTS -->
-<div id="products" class="tab-content">
-
-<div class="card">
-  <input type="text" placeholder="Search products..." style="width:60%; padding:8px;">
-</div>
-
-<div class="card">
-<table>
-<tr>
-  <th>Product</th>
-  <th>Seller</th>
-  <th>Status</th>
-  <th>Actions</th>
-</tr>
-
-<tr>
-  <td>Premium Wireless Headphones</td>
-  <td>TechStore 1</td>
-  <td><span class="badge warning">Pending Review</span></td>
-  <td><button class="btn btn-danger">Remove</button></td>
-</tr>
-
-<tr>
-  <td>Mechanical Keyboard v2</td>
-  <td>TechStore 2</td>
-  <td><span class="badge success">Active</span></td>
-  <td><button class="btn btn-danger">Remove</button></td>
-</tr>
-
-</table>
-</div>
-
-<h2>Categories & Tags Management</h2>
-
-<div class="card">
-  <input type="text" placeholder="New Category..." style="padding:8px;">
-  <button class="btn btn-primary">Add</button>
-
-  <div style="margin-top:10px;">
-    <span class="tag">Electronics ✖</span>
-    <span class="tag">Clothing ✖</span>
-    <span class="tag">Sports ✖</span>
-  </div>
-</div>
-
-</div>
-
-<!-- PENDING -->
-<div id="pending" class="tab-content" style="display:none;">
-
-<div class="card">
-<table>
-<tr>
-  <th>Product</th>
-  <th>Seller</th>
-  <th>Category</th>
-  <th>Price</th>
-  <th>Actions</th>
-</tr>
-
-<tr>
-  <td>Smart Watch Series 8</td>
-  <td>TechStore 1</td>
-  <td>Electronics</td>
-  <td>₱22,500</td>
-  <td>
-    <button class="btn btn-danger">Reject</button>
-    <button class="btn btn-primary">Approve</button>
-  </td>
-</tr>
-
-</table>
-</div>
-
-</div>
-
-<!-- REVIEWS -->
-<div id="reviews" class="tab-content" style="display:none;">
-
-<div class="card">
-<table>
-<tr>
-  <th>Product</th>
-  <th>Review</th>
-  <th>Reason</th>
-  <th>Actions</th>
-</tr>
-
-<tr>
-  <td>Keyboard v2</td>
-  <td>Terrible product</td>
-  <td>Inappropriate</td>
-  <td>
-    <button class="btn">Ignore</button>
-    <button class="btn btn-danger">Delete</button>
-  </td>
-</tr>
-
-</table>
-</div>
-
-</div>
-
-</div>
-
-<!-- SCRIPT -->
-<script>
-function showTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-  document.getElementById(tab).style.display = 'block';
-
+function showTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
+  
+  document.getElementById(tabId).style.display = 'block';
   event.target.classList.add('active');
 }
 </script>
 
+<div class="container" id="main">
+
+<h1 class="page-title">Audit Logs</h1>
+<p>Monitor all user activities and login events across the platform.</p>
+
+<div class="tabs mb-4">
+  <button class="active" onclick="showTab('loginHistory')">Login History</button>
+  <button onclick="showTab('auditLog')">Action History</button>
+</div>
+
+<!-- Login History -->
+<div id="loginHistory" class="tab-content">
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Login Time</th>
+          <th>Logout Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($loginHistory)): ?>
+          <tr><td colspan="4" style="text-align: center; color: #999;">No login history available.</td></tr>
+        <?php else: ?>
+          <?php foreach ($loginHistory as $log): ?>
+            <tr>
+              <td><strong><?php echo htmlspecialchars($log['username'] ?? 'System'); ?></strong></td>
+              <td><?php echo htmlspecialchars($log['login_time']); ?></td>
+              <td><?php echo htmlspecialchars($log['logout_time'] ?? 'N/A'); ?></td>
+              <td>
+                <span class="badge <?php echo $log['status'] === 'success' ? 'success' : 'danger'; ?>">
+                  <?php echo ucfirst($log['status']); ?>
+                </span>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Audit Log -->
+<div id="auditLog" class="tab-content" style="display: none;">
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Action</th>
+          <th>Module</th>
+          <th>Description</th>
+          <th>IP Address</th>
+          <th>Date & Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($auditLog)): ?>
+          <tr><td colspan="6" style="text-align: center; color: #999;">No action history available.</td></tr>
+        <?php else: ?>
+          <?php foreach ($auditLog as $log): ?>
+            <tr>
+              <td><strong><?php echo htmlspecialchars($log['username'] ?? 'System'); ?></strong></td>
+              <td>
+                <span class="badge <?php
+                  $action = $log['action'];
+                  $badgeClass = 'warning';
+                  if ($action === 'create') $badgeClass = 'success';
+                  elseif ($action === 'update') $badgeClass = 'warning';
+                  elseif ($action === 'delete') $badgeClass = 'danger';
+                  elseif ($action === 'login' || $action === 'logout') $badgeClass = 'info';
+                  echo $badgeClass;
+                ?>">
+                  <?php echo ucfirst($log['action']); ?>
+                </span>
+              </td>
+              <td><?php echo htmlspecialchars($log['module']); ?></td>
+              <td><?php echo htmlspecialchars($log['description'] ?? 'N/A'); ?></td>
+              <td><?php echo htmlspecialchars($log['created_at']); ?></td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
 </body>
 </html>

@@ -6,25 +6,82 @@ require_once 'admin/db.connect.php';
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
 $row = mysqli_fetch_assoc($result);
-$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 
 // Check session timeout
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
 // Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
+// Fetch monthly sales data for the last 6 months
+$salesDataStmt = $conn->prepare("
+    SELECT 
+        DATE_FORMAT(created_at, '%b') as month,
+        COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) as total
+    FROM orders
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+    GROUP BY DATE_FORMAT(created_at, '%Y-%m'), month
+    ORDER BY DATE_FORMAT(created_at, '%Y-%m') ASC
+");
+$salesDataStmt->execute();
+$salesDataResult = $salesDataStmt->get_result();
+$salesMonths = [];
+$salesValues = [];
+while ($sale = $salesDataResult->fetch_assoc()) {
+    $salesMonths[] = $sale['month'];
+    $salesValues[] = (float)$sale['total'];
+}
+$salesDataStmt->close();
+
+// Fetch user growth data for the last 6 months
+$userGrowthStmt = $conn->prepare("
+    SELECT 
+        DATE_FORMAT(created_at, '%b') as month,
+        COUNT(*) as total
+    FROM user
+    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+    GROUP BY DATE_FORMAT(created_at, '%Y-%m'), month
+    ORDER BY DATE_FORMAT(created_at, '%Y-%m') ASC
+");
+$userGrowthStmt->execute();
+$userGrowthResult = $userGrowthStmt->get_result();
+$userMonths = [];
+$userValues = [];
+while ($user = $userGrowthResult->fetch_assoc()) {
+    $userMonths[] = $user['month'];
+    $userValues[] = (int)$user['total'];
+}
+$userGrowthStmt->close();
+
+// Fetch recent orders
+$recentOrdersStmt = $conn->prepare("
+    SELECT 
+        o.order_id,
+        o.order_number,
+        o.total_amount,
+        o.order_status,
+        o.created_at,
+        p.category_gender
+    FROM orders o
+    LEFT JOIN order_item oi ON o.order_id = oi.order_id
+    LEFT JOIN product p ON oi.product_id = p.product_id
+    GROUP BY o.order_id
+    ORDER BY o.created_at DESC
+    LIMIT 10
+");
+$recentOrdersStmt->execute();
+$recentOrders = $recentOrdersStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$recentOrdersStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -115,6 +172,15 @@ th {
 h1 {
   color: #610C27;
 }
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.success { background: #d1fae5; color: #065f46; }
+.warning { background: #fef3c7; color: #92400e; }
+.danger { background: #fee2e2; color: #991b1b; }
 </style>
 </head>
 
@@ -181,27 +247,24 @@ function toggleSidebar() {
       </tr>
     </thead>
     <tbody>
-      <tr>
-        <td>2023-10-18</td>
-        <td>#ORD-1001</td>
-        <td>Electronics</td>
-        <td>₱5,400.00</td>
-        <td>Completed</td>
-      </tr>
-      <tr>
-        <td>2023-10-17</td>
-        <td>#ORD-1002</td>
-        <td>Fashion</td>
-        <td>₱1,200.00</td>
-        <td>Completed</td>
-      </tr>
-      <tr>
-        <td>2023-10-17</td>
-        <td>#ORD-1003</td>
-        <td>Home</td>
-        <td>₱2,800.00</td>
-        <td>Pending</td>
-      </tr>
+      <?php if (empty($recentOrders)): ?>
+        <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">No orders found.</td></tr>
+      <?php else: ?>
+        <?php foreach ($recentOrders as $order): ?>
+          <?php 
+            $statusClass = 'warning';
+            if (in_array($order['order_status'], ['delivered', 'shipped'])) $statusClass = 'success';
+            elseif (in_array($order['order_status'], ['cancelled', 'returned'])) $statusClass = 'danger';
+          ?>
+          <tr>
+            <td><?php echo date('Y-m-d', strtotime($order['created_at'])); ?></td>
+            <td>#<?php echo htmlspecialchars($order['order_number']); ?></td>
+            <td><?php echo htmlspecialchars($order['category_gender'] ?? 'N/A'); ?></td>
+            <td>₱<?php echo number_format($order['total_amount'], 2); ?></td>
+            <td><span class="badge <?php echo $statusClass; ?>"><?php echo ucfirst($order['order_status']); ?></span></td>
+          </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </tbody>
   </table>
 </div>
@@ -213,10 +276,10 @@ const salesCtx = document.getElementById('salesChart').getContext('2d');
 new Chart(salesCtx, {
   type: 'bar',
   data: {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: <?php echo json_encode($salesMonths); ?>,
     datasets: [{
       label: 'Sales (₱)',
-      data: [12000, 19000, 3000, 5000, 20000, 30000],
+      data: <?php echo json_encode($salesValues); ?>,
       backgroundColor: '#610C27'
     }]
   }
@@ -226,10 +289,10 @@ const userCtx = document.getElementById('userChart').getContext('2d');
 new Chart(userCtx, {
   type: 'line',
   data: {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: <?php echo json_encode($userMonths); ?>,
     datasets: [{
       label: 'New Users',
-      data: [150, 230, 180, 400, 560, 720],
+      data: <?php echo json_encode($userValues); ?>,
       borderColor: '#a61b4a',
       fill: false
     }]

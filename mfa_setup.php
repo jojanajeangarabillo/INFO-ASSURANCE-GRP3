@@ -30,10 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt->bind_param("si", $secret, $user_id);
         
         if ($stmt->execute()) {
+            
             // Log user in fully
             $_SESSION['user_id'] = $_SESSION['temp_user_id'];
             $_SESSION['username'] = $_SESSION['temp_username'];
             $_SESSION['role_id'] = $_SESSION['temp_role_id'];
+            
+            // Track successful login
+            $login_stmt = $conn->prepare("INSERT INTO login_history (user_id, login_time, status) VALUES (?, NOW(), 'success')");
+            $login_stmt->bind_param("i", $user_id);
+            $login_stmt->execute();
+            
+            // Store login_id in session for logout tracking
+            $_SESSION['current_login_id'] = $conn->insert_id;
             
             // Cleanup temp session
             unset($_SESSION['temp_user_id']);

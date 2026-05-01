@@ -89,6 +89,12 @@ if (isset($_POST['login'])) {
         $update_stmt->execute();
         $_SESSION['error_message'] = "Invalid username or password. Attempts remaining: " . ($settings['max_login_attempts'] - $new_attempts);
       }
+      
+      // Track failed login
+      $failed_login_stmt = $conn->prepare("INSERT INTO login_history (user_id, login_time, status) VALUES (?, NOW(), 'failed')");
+      $failed_login_stmt->bind_param("i", $row['user_id']);
+      $failed_login_stmt->execute();
+      
       header("Location: login.php");
       exit;
     }

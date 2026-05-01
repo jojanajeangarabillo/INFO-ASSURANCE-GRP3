@@ -8,7 +8,7 @@ require_once 'admin/db.connect.php';
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
 $row = mysqli_fetch_assoc($result);
-$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30; 
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 
 // Check session timeout
 if (!isset($_SESSION['last_activity'])) {
@@ -27,36 +27,40 @@ if (!isset($_SESSION['last_activity'])) {
 // Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
-// Fetch analytics metrics
-$topCategoryStmt = $conn->prepare("
-    SELECT c.name as category_name, COUNT(oi.order_item_id) as order_count
-    FROM category c
-    LEFT JOIN product p ON c.category_id = p.category_id
+// Fetch analytics metrics based on actual database schema
+// Top category gender (since we don't have category table, use category_gender from product)
+$topGenderStmt = $conn->prepare("
+    SELECT 
+        p.category_gender, 
+        COUNT(oi.order_item_id) as order_count
+    FROM product p
     LEFT JOIN order_item oi ON p.product_id = oi.product_id
     LEFT JOIN orders o ON oi.order_id = o.order_id AND o.payment_status = 'paid'
-    GROUP BY c.category_id
+    GROUP BY p.category_gender
     ORDER BY order_count DESC
     LIMIT 1
 ");
-$topCategoryStmt->execute();
-$topCategoryResult = $topCategoryStmt->get_result()->fetch_assoc();
-$topCategory = $topCategoryResult ? $topCategoryResult['category_name'] : 'N/A';
-$topCategoryStmt->close();
+$topGenderStmt->execute();
+$topGenderResult = $topGenderStmt->get_result()->fetch_assoc();
+$topCategory = $topGenderResult ? $topGenderResult['category_gender'] : 'N/A';
+$topGenderStmt->close();
 
+// Average order value
 $avgOrderStmt = $conn->prepare("SELECT COALESCE(AVG(total_amount), 0) as avg_order FROM orders WHERE payment_status = 'paid'");
 $avgOrderStmt->execute();
 $avgOrderValue = $avgOrderStmt->get_result()->fetch_assoc()['avg_order'];
 $avgOrderStmt->close();
 
+// Repeat customers (using customer_id instead of user_id)
 $repeatCustomersStmt = $conn->prepare("
     SELECT 
-        COUNT(DISTINCT user_id) as total_customers,
+        COUNT(DISTINCT customer_id) as total_customers,
         SUM(CASE WHEN order_count > 1 THEN 1 ELSE 0 END) as repeat_customers
     FROM (
-        SELECT user_id, COUNT(*) as order_count 
+        SELECT customer_id, COUNT(*) as order_count 
         FROM orders 
-        WHERE payment_status = 'paid' AND user_id IS NOT NULL
-        GROUP BY user_id
+        WHERE payment_status = 'paid' AND customer_id IS NOT NULL
+        GROUP BY customer_id
     ) as customer_orders
 ");
 $repeatCustomersStmt->execute();
@@ -66,15 +70,15 @@ $repeatCustomers = $repeatResult['total_customers'] > 0
     : 0;
 $repeatCustomersStmt->close();
 
+// Seller performance (using order_item.seller_id)
 $sellerPerformanceStmt = $conn->prepare("
     SELECT 
-        s.store_name,
-        COALESCE(SUM(o.total_amount), 0) as revenue,
-        COUNT(DISTINCT o.order_id) as order_count,
-        COALESCE(AVG(sr.rating), 0) as avg_rating
+        s.shop_name,
+        COALESCE(SUM(oi.line_total), 0) as revenue,
+        COUNT(DISTINCT o.order_id) as order_count
     FROM seller s
-    LEFT JOIN orders o ON s.seller_id = o.seller_id AND o.payment_status = 'paid'
-    LEFT JOIN seller_review sr ON s.seller_id = sr.seller_id
+    LEFT JOIN order_item oi ON s.seller_id = oi.seller_id
+    LEFT JOIN orders o ON oi.order_id = o.order_id AND o.payment_status = 'paid'
     WHERE s.is_approved = 1
     GROUP BY s.seller_id
     ORDER BY revenue DESC
@@ -178,6 +182,12 @@ td {
   padding: 10px;
   border-bottom: 1px solid #ddd;
 }
+
+.text-muted {
+  color: #999;
+  text-align: center;
+  padding: 20px;
+}
 </style>
 </head>
 
@@ -259,10 +269,10 @@ function toggleSidebar() {
       <?php else: ?>
         <?php foreach ($sellerPerformance as $seller): ?>
           <tr>
-            <td><?php echo htmlspecialchars($seller['store_name']); ?></td>
+            <td><?php echo htmlspecialchars($seller['shop_name']); ?></td>
             <td>₱<?php echo number_format($seller['revenue'], 2); ?></td>
             <td><?php echo number_format($seller['order_count']); ?></td>
-            <td><?php echo number_format($seller['avg_rating'], 1); ?></td>
+            <td>N/A</td>
           </tr>
         <?php endforeach; ?>
       <?php endif; ?>
@@ -272,11 +282,6 @@ function toggleSidebar() {
 </div>
 
 </div>
-
-<script>
-new Chart(document.getElementById('revenueChart'), {});
-</script>
-
 
 </body>
 </html>
