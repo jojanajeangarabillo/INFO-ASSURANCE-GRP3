@@ -26,17 +26,14 @@ if (!isset($_SESSION['last_activity'])) {
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Order Management</title>
-
+<title>Product Management</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <link rel="stylesheet" href="sidebar.css">
+
 <script>
     const timeoutMs = <?php echo $timeout_ms; ?>;
     let logoutTimer;
@@ -64,94 +61,98 @@ body {
   background: #fdf2f6;
 }
 
-/* SAME LAYOUT */
 .container {
   margin-left: 240px;
   padding: 20px;
   transition: 0.3s;
 }
-
 .container.full {
   margin-left: 70px;
 }
 
-/* GRID */
-.grid {
-  display: grid;
-  gap: 20px;
+/* title */
+.page-title {
+  font-size: 32px;
+  font-weight: bold;
+  color: #610C27;
+  margin-bottom: 5px;
 }
 
-.grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+/* tabs */
+.tabs button {
+  padding: 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tabs button.active {
+  border-bottom: 2px solid #a61b4a;
+  color: #a61b4a;
+  font-weight: bold;
 }
 
-/* CARDS (MATCH DASHBOARD STYLE) */
+/* card */
 .card {
-  background: #610C27;
-  color: white;
-  padding: 20px;
-  border-radius: 12px;
-}
-
-.card small {
-  opacity: 0.8;
-}
-
-/* SEARCH */
-.search-box {
   background: white;
-  padding: 12px;
+  padding: 15px;
   border-radius: 10px;
   margin-bottom: 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
-.search-box input {
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-}
-
-/* TABLE */
+/* table */
 table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
 }
-
 th, td {
   padding: 12px;
+  border-bottom: 1px solid #ddd;
   text-align: left;
 }
-
 th {
-  background: #EFECE9;
-  font-size: 12px;
+  background: #f9dbe5;
+  font-size: 13px;
+  color: #610C27;
 }
 
-tr:hover {
-  background: #fdf2f6;
-}
-
-/* BADGES */
+/* badges */
 .badge {
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 12px;
 }
-
 .success { background: #d1fae5; color: #065f46; }
 .warning { background: #fef3c7; color: #92400e; }
 .danger { background: #fee2e2; color: #991b1b; }
 
-/* BUTTON */
+/* buttons */
 .btn {
-  border: 1px solid #ccc;
-  padding: 5px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
-  background: white;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+.btn-primary {
+  background: #a61b4a;
+  color: white;
+  border: none;
+}
+.btn-danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.mb-4 { margin-bottom: 1rem; }
+
+.tag {
+  background: #EFECE9;
+  padding: 4px 10px;
+  border-radius: 15px;
+  margin-right: 5px;
+  font-size: 12px;
   cursor: pointer;
 }
 h1 {
@@ -191,95 +192,133 @@ function toggleSidebar() {
 }
 </script>
 
-<!-- CONTENT -->
+<!-- MAIN -->
 <div class="container" id="main">
 
-<h1>Platform Orders</h1>
-<p>Track and monitor all orders across the platform.</p>
+<h1 class="page-title">Audit Logs</h1>
+<p>Monitor and review all actions performed across the platform.</p>
 
-<br>
-
-<!-- STATS -->
-<div class="grid grid-3">
-
-  <div class="card">
-    <small>Total Orders</small>
-    <h2>12,490</h2>
-  </div>
-
-  <div class="card">
-    <small>Total Revenue</small>
-    <h2>₱845.2K</h2>
-  </div>
-
-  <div class="card">
-    <small>Pending Fulfillment</small>
-    <h2>342</h2>
-  </div>
+<!-- TABS -->
+<div class="tabs mb-4">
+  <button class="active" onclick="showTab('products')">Login History</button>
+  <button onclick="showTab('pending')">Actions History</button>
 
 </div>
 
-<br>
+<!-- ALL PRODUCTS -->
+<div id="products" class="tab-content">
 
-<!-- SEARCH -->
-<div class="search-box">
-  <input type="text" placeholder="Search Order ID or Customer Email">
+<div class="card">
+  <input type="text" placeholder="Search products..." style="width:60%; padding:8px;">
 </div>
 
-<!-- TABLE -->
+<div class="card">
 <table>
-<thead>
 <tr>
-  <th>Order ID</th>
-  <th>Customer</th>
-  <th>Total</th>
-  <th>Payment</th>
-  <th>Fraud</th>
+  <th>Product</th>
+  <th>Seller</th>
   <th>Status</th>
-  <th>Action</th>
-</tr>
-</thead>
-
-<tbody>
-
-<tr>
-  <td>#GLB-991</td>
-  <td>user1@email.com</td>
-  <td>₱245.00</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge warning">Processing</span></td>
-  <td><button class="btn">Invoice</button></td>
+  <th>Actions</th>
 </tr>
 
 <tr>
-  <td>#GLB-992</td>
-  <td>user2@email.com</td>
-  <td>₱89.50</td>
-  <td><span class="badge success">Paid</span></td>
-  <td><span class="badge success">Safe</span></td>
-  <td><span class="badge success">Delivered</span></td>
-  <td><button class="btn">Invoice</button></td>
+  <td>Premium Wireless Headphones</td>
+  <td>TechStore 1</td>
+  <td><span class="badge warning">Pending Review</span></td>
+  <td><button class="btn btn-danger">Remove</button></td>
 </tr>
 
-<tr style="background:#fee2e2;">
-  <td>#GLB-993</td>
-  <td>suspicious@email.com</td>
-  <td>₱45,000.00</td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><span class="badge danger">Suspicious</span></td>
-  <td><span class="badge warning">Pending</span></td>
-  <td><button class="btn">Invoice</button></td>
+<tr>
+  <td>Mechanical Keyboard v2</td>
+  <td>TechStore 2</td>
+  <td><span class="badge success">Active</span></td>
+  <td><button class="btn btn-danger">Remove</button></td>
 </tr>
 
-</tbody>
 </table>
+</div>
+
+<h2>Categories & Tags Management</h2>
+
+<div class="card">
+  <input type="text" placeholder="New Category..." style="padding:8px;">
+  <button class="btn btn-primary">Add</button>
+
+  <div style="margin-top:10px;">
+    <span class="tag">Electronics ✖</span>
+    <span class="tag">Clothing ✖</span>
+    <span class="tag">Sports ✖</span>
+  </div>
+</div>
 
 </div>
 
+<!-- PENDING -->
+<div id="pending" class="tab-content" style="display:none;">
+
+<div class="card">
+<table>
+<tr>
+  <th>Product</th>
+  <th>Seller</th>
+  <th>Category</th>
+  <th>Price</th>
+  <th>Actions</th>
+</tr>
+
+<tr>
+  <td>Smart Watch Series 8</td>
+  <td>TechStore 1</td>
+  <td>Electronics</td>
+  <td>₱22,500</td>
+  <td>
+    <button class="btn btn-danger">Reject</button>
+    <button class="btn btn-primary">Approve</button>
+  </td>
+</tr>
+
+</table>
+</div>
+
+</div>
+
+<!-- REVIEWS -->
+<div id="reviews" class="tab-content" style="display:none;">
+
+<div class="card">
+<table>
+<tr>
+  <th>Product</th>
+  <th>Review</th>
+  <th>Reason</th>
+  <th>Actions</th>
+</tr>
+
+<tr>
+  <td>Keyboard v2</td>
+  <td>Terrible product</td>
+  <td>Inappropriate</td>
+  <td>
+    <button class="btn">Ignore</button>
+    <button class="btn btn-danger">Delete</button>
+  </td>
+</tr>
+
+</table>
+</div>
+
+</div>
+
+</div>
+
+<!-- SCRIPT -->
 <script>
-function updateStatus(orderId) {
-  alert('Update status for order: ' + orderId);
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+  document.getElementById(tab).style.display = 'block';
+
+  document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
 }
 </script>
 

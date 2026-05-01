@@ -317,8 +317,8 @@ $stmt->close();
         class="fas fa-chart-line"></i><span class="text">Analytics</span></a>
     <a href="admin_users.php" class="<?php echo $current_page == 'admin_users.php' ? 'active' : ''; ?>"><i
         class="fas fa-users"></i><span class="text">Users</span></a>
-    <a href="admin_product.php" class="<?php echo $current_page == 'admin_product.php' ? 'active' : ''; ?>"><i
-        class="fas fa-box"></i><span class="text">Products</span></a>
+    <a href="admin_auditlogs.php" class="<?php echo $current_page == 'admin_auditlogs.php' ? 'active' : ''; ?>"><i
+        class="fas fa-history"></i><span class="text">Audit Logs</span></a>
     <a href="admin_orders.php" class="<?php echo $current_page == 'admin_orders.php' ? 'active' : ''; ?>"><i
         class="fas fa-cart-shopping"></i><span class="text">Orders</span></a>
     <a href="admin_reports.php" class="<?php echo $current_page == 'admin_reports.php' ? 'active' : ''; ?>"><i
