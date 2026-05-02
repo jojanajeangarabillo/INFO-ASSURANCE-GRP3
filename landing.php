@@ -6,73 +6,46 @@ require_once 'config_settings.php';
 // Initialize settings
 $settings = SiteSettings::getInstance($conn);
 
-// Get filters
+// Get filters (only search and category remain)
 $search = trim($_GET['search'] ?? '');
 $category = trim($_GET['category'] ?? 'All');
-$size = trim($_GET['size'] ?? 'All');
-$color = trim($_GET['color'] ?? 'All');
-$minPrice = isset($_GET['min_price']) ? (float) $_GET['min_price'] : '';
-$maxPrice = isset($_GET['max_price']) ? (float) $_GET['max_price'] : '';
 
 // Get dynamic categories
 $categories = $settings->getCategories();
 
-// Build products query
+// Build products query (simplified - removed size, color, price filters)
 $sql = "SELECT
           p.product_id,
           p.name,
           p.description,
           p.category_gender,
-          MIN(pv.price) AS min_price,
+          p.price,
           (SELECT pv2.image_path 
            FROM product_variant pv2 
            WHERE pv2.product_id = p.product_id 
            AND pv2.image_path IS NOT NULL 
            LIMIT 1) AS image_path
         FROM product p
-        INNER JOIN product_variant pv ON pv.product_id = p.product_id
         WHERE p.status = 'active'";
 
 $types = "";
 $params = [];
 
+// Category filter (only if not 'All' and category exists in list)
 if ($category !== 'All' && in_array($category, $categories)) {
   $sql .= " AND p.category_gender = ?";
   $types .= "s";
   $params[] = $category;
 }
 
+// Search filter
 if ($search !== '') {
   $sql .= " AND p.name LIKE ?";
   $types .= "s";
   $params[] = "%" . $search . "%";
 }
 
-if ($size !== '' && $size !== 'All') {
-  $sql .= " AND pv.size = ?";
-  $types .= "s";
-  $params[] = $size;
-}
-
-if ($color !== '' && $color !== 'All') {
-  $sql .= " AND pv.color = ?";
-  $types .= "s";
-  $params[] = $color;
-}
-
-if ($minPrice !== '' && $minPrice >= 0) {
-  $sql .= " AND pv.price >= ?";
-  $types .= "d";
-  $params[] = $minPrice;
-}
-
-if ($maxPrice !== '' && $maxPrice >= 0) {
-  $sql .= " AND pv.price <= ?";
-  $types .= "d";
-  $params[] = $maxPrice;
-}
-
-$sql .= " GROUP BY p.product_id, p.name, p.description, p.category_gender ORDER BY p.created_at DESC LIMIT 24";
+$sql .= " ORDER BY p.created_at DESC LIMIT 24";
 
 $stmt = $conn->prepare($sql);
 if (!empty($params)) {
@@ -80,21 +53,6 @@ if (!empty($params)) {
 }
 $stmt->execute();
 $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-// Fetch distinct sizes and colors
-$sizes = [];
-$colors = [];
-$optionStmt = $conn->prepare("SELECT DISTINCT size, color FROM product_variant ORDER BY size ASC, color ASC");
-$optionStmt->execute();
-$optionRows = $optionStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-foreach ($optionRows as $row) {
-  if (!empty($row['size']) && !in_array($row['size'], $sizes, true)) {
-    $sizes[] = $row['size'];
-  }
-  if (!empty($row['color']) && !in_array($row['color'], $colors, true)) {
-    $colors[] = $row['color'];
-  }
-}
 
 // Get dynamic content
 $siteName = $settings->get('site_name', 'J3RS Shop Co.');
@@ -333,61 +291,6 @@ nav a:hover {
   background: #fdf2f6;
   color: #a61b4a;
   border-color: #a61b4a;
-}
-
-.filters-sidebar {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  position: sticky;
-  top: 90px;
-}
-
-.filter-group {
-  margin-bottom: 25px;
-}
-
-.filter-group h5 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: #333;
-}
-
-.filter-group select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-.price-inputs {
-  display: flex;
-  gap: 10px;
-}
-
-.price-inputs input {
-  width: 50%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-.apply-filters-btn {
-  width: 100%;
-  padding: 10px;
-  background: #a61b4a;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 0.3s;
-}
-
-.apply-filters-btn:hover {
-  background: #610C27;
 }
 
 .products-section {
@@ -790,11 +693,23 @@ nav a:hover {
   opacity: 0.9;
 }
 
+.search-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 40px;
+}
+
 .search-input {
   border: 2px solid #e8d7df;
   border-radius: 40px;
-  padding: 10px 20px;
-  width: 250px;
+  padding: 12px 25px;
+  width: 400px;
+  font-size: 16px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #a61b4a;
 }
 
 @media (max-width: 768px) {
@@ -817,11 +732,6 @@ nav a:hover {
   
   .search-input {
     width: 100%;
-  }
-  
-  .filters-sidebar {
-    position: static;
-    margin-bottom: 20px;
   }
 }
 </style>
@@ -860,11 +770,17 @@ nav a:hover {
 <div class="category-filters" id="categories">
   <div class="container">
     <div class="d-flex flex-wrap gap-2 justify-content-center">
+      <a href="?category=All<?php echo $search ? '&search=' . urlencode($search) : ''; ?>" 
+         class="category-btn <?php echo $category == 'All' ? 'active' : ''; ?>">
+        All
+      </a>
       <?php foreach ($categories as $cat): ?>
-        <a href="?category=<?php echo urlencode($cat); ?>&search=<?php echo urlencode($search); ?>&size=<?php echo urlencode($size); ?>&color=<?php echo urlencode($color); ?>&min_price=<?php echo urlencode($minPrice); ?>&max_price=<?php echo urlencode($maxPrice); ?>" 
-           class="category-btn <?php echo $category == $cat ? 'active' : ''; ?>">
-          <?php echo htmlspecialchars($cat); ?>
-        </a>
+        <?php if ($cat !== 'All'): ?>
+          <a href="?category=<?php echo urlencode($cat); ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>" 
+             class="category-btn <?php echo $category == $cat ? 'active' : ''; ?>">
+            <?php echo htmlspecialchars($cat); ?>
+          </a>
+        <?php endif; ?>
       <?php endforeach; ?>
     </div>
   </div>
@@ -886,106 +802,58 @@ nav a:hover {
 
 <section class="products-section" id="products">
   <div class="container">
-    <div class="row">
-      <div class="col-lg-3 mb-4">
-        <div class="filters-sidebar">
-          <h4 class="mb-3">Filters</h4>
-          
-          <form method="GET" id="filterForm">
-            <input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>">
-            <input type="hidden" name="search" value="<?php echo htmlspecialchars($search); ?>">
-            
-            <div class="filter-group">
-              <h5><i class="fas fa-tag"></i> Size</h5>
-              <select name="size">
-                <option value="All" <?php echo $size == 'All' ? 'selected' : ''; ?>>All Sizes</option>
-                <?php foreach ($sizes as $s): ?>
-                  <option value="<?php echo htmlspecialchars($s); ?>" <?php echo $size == $s ? 'selected' : ''; ?>><?php echo htmlspecialchars($s); ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            
-            <div class="filter-group">
-              <h5><i class="fas fa-palette"></i> Color</h5>
-              <select name="color">
-                <option value="All" <?php echo $color == 'All' ? 'selected' : ''; ?>>All Colors</option>
-                <?php foreach ($colors as $c): ?>
-                  <option value="<?php echo htmlspecialchars($c); ?>" <?php echo $color == $c ? 'selected' : ''; ?>><?php echo htmlspecialchars($c); ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-            
-            <div class="filter-group">
-              <h5><i class="fas fa-dollar-sign"></i> Price Range</h5>
-              <div class="price-inputs">
-                <input type="number" name="min_price" placeholder="Min" value="<?php echo htmlspecialchars($minPrice); ?>" step="0.01">
-                <input type="number" name="max_price" placeholder="Max" value="<?php echo htmlspecialchars($maxPrice); ?>" step="0.01">
-              </div>
-            </div>
-            
-            <button type="submit" class="apply-filters-btn">Apply Filters</button>
-            
-            <?php if ($category != 'All' || $search != '' || $size != 'All' || $color != 'All' || $minPrice != '' || $maxPrice != ''): ?>
-              <a href="?" class="btn btn-outline-secondary w-100 mt-2">Clear All</a>
-            <?php endif; ?>
-          </form>
-        </div>
-      </div>
+    <div class="text-center mb-5">
+      <h2 class="section-title">Product Collection</h2>
+      <p class="section-subtitle"><?php echo count($products); ?> products found</p>
       
-      <div class="col-lg-9">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-          <div>
-            <h2 class="section-title mb-0">Product Collection</h2>
-            <p class="section-subtitle mb-0"><?php echo count($products); ?> products found</p>
-          </div>
-          <form method="GET" class="d-flex">
-            <?php 
-            $preserveParams = ['category', 'size', 'color', 'min_price', 'max_price'];
-            foreach ($preserveParams as $param) {
-              if (isset($_GET[$param]) && $_GET[$param] !== '' && $_GET[$param] !== 'All') {
-                echo '<input type="hidden" name="' . htmlspecialchars($param) . '" value="' . htmlspecialchars($_GET[$param]) . '">';
-              }
-            }
-            ?>
-            <input class="search-input" type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Search products...">
-          </form>
-        </div>
-        
-        <div class="row g-4">
-          <?php if (empty($products)): ?>
-            <div class="col-12">
-              <div class="text-center py-5">
-                <i class="fas fa-search" style="font-size: 64px; color: #ccc;"></i>
-                <h3 class="mt-3">No products found</h3>
-                <p>Try adjusting your filters or search terms.</p>
-                <a href="?" class="btn btn-primary">View All Products</a>
-              </div>
-            </div>
+      <!-- Search Form -->
+      <div class="search-container">
+        <form method="GET" class="d-flex justify-content-center">
+          <?php if ($category !== 'All'): ?>
+            <input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>">
           <?php endif; ?>
-          
-          <?php foreach ($products as $product): ?>
-            <div class="col-12 col-sm-6 col-md-4 col-lg-4">
-              <div class="product-card h-100 d-flex flex-column">
-                <div class="product-image-wrapper">
-                  <?php 
-                  $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : 'https://via.placeholder.com/400x500?text=No+Image';
-                  ?>
-                  <img class="product-image" src="<?php echo $imagePath; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" onerror="this.src='https://via.placeholder.com/400x500?text=Product+Image'">
-                  <span class="product-category"><?php echo htmlspecialchars($product['category_gender']); ?></span>
-                </div>
-                <div class="product-info d-flex flex-column flex-grow-1">
-                  <h3 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h3>
-                  <p class="product-description"><?php echo htmlspecialchars(substr($product['description'] ?? 'No description available', 0, 80)); ?>...</p>
-                  <div class="product-price">₱<?php echo number_format((float) $product['min_price'], 2); ?></div>
-                  <a class="product-link mt-auto" href="product_details.php?product_id=<?php echo (int) $product['product_id']; ?>">
-                    View Details <i class="fas fa-arrow-right ms-1"></i>
-                  </a>
-                </div>
-              </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
+          <input class="search-input" type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Search products...">
+          <button type="submit" style="display: none;">Search</button>
+          <?php if ($search !== ''): ?>
+            <a href="?<?php echo $category !== 'All' ? 'category=' . urlencode($category) : ''; ?>" class="btn btn-outline-secondary ms-2" style="border-radius: 40px;">Clear</a>
+          <?php endif; ?>
+        </form>
       </div>
+    </div>
+    
+    <div class="row g-4">
+      <?php if (empty($products)): ?>
+        <div class="col-12">
+          <div class="text-center py-5">
+            <i class="fas fa-search" style="font-size: 64px; color: #ccc;"></i>
+            <h3 class="mt-3">No products found</h3>
+            <p>Try adjusting your search or category filter.</p>
+            <a href="?" class="btn btn-primary">View All Products</a>
+          </div>
+        </div>
+      <?php endif; ?>
+      
+      <?php foreach ($products as $product): ?>
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <div class="product-card h-100 d-flex flex-column">
+            <div class="product-image-wrapper">
+              <?php 
+              $imagePath = !empty($product['image_path']) ? htmlspecialchars($product['image_path']) : 'https://via.placeholder.com/400x500?text=No+Image';
+              ?>
+              <img class="product-image" src="<?php echo $imagePath; ?>" alt="<?php echo htmlspecialchars($product['name']); ?>" onerror="this.src='https://via.placeholder.com/400x500?text=Product+Image'">
+              <span class="product-category"><?php echo htmlspecialchars($product['category_gender']); ?></span>
+            </div>
+            <div class="product-info d-flex flex-column flex-grow-1">
+              <h3 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h3>
+              <p class="product-description"><?php echo htmlspecialchars(substr($product['description'] ?? 'No description available', 0, 80)); ?>...</p>
+              <div class="product-price">₱<?php echo number_format((float) $product['price'], 2); ?></div>
+              <a class="product-link mt-auto" href="product_details.php?product_id=<?php echo (int) $product['product_id']; ?>">
+                View Details <i class="fas fa-arrow-right ms-1"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      <?php endforeach; ?>
     </div>
   </div>
 </section>
@@ -1093,12 +961,6 @@ document.addEventListener('click', function (event) {
   if (event.target === modal) {
     closeSignupModal();
   }
-});
-
-document.querySelectorAll('#filterForm select').forEach(select => {
-  select.addEventListener('change', () => {
-    document.getElementById('filterForm').submit();
-  });
 });
 </script>
 
