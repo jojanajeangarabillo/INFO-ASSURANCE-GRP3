@@ -69,8 +69,8 @@ $custStmt->execute();
 $customerInfo = $custStmt->get_result()->fetch_assoc();
 
 $fullName = $customerInfo['full_name'] ?? 'Guest Customer';
-$phone = $customerInfo['contact_number'] ?? '';
-$address = $customerInfo['address_line'] ?? '';
+$phone = decrypt_data((string) ($customerInfo['contact_number'] ?? ''));
+$address = decrypt_data((string) ($customerInfo['address_line'] ?? ''));
 $city = $customerInfo['city'] ?? '';
 $region = $customerInfo['region'] ?? '';
 $postalCode = $customerInfo['postal_code'] ?? '';

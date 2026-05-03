@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 03, 2026 at 04:49 AM
+-- Generation Time: May 03, 2026 at 05:17 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -108,7 +108,7 @@ CREATE TABLE `customer` (
   `user_id` int(11) NOT NULL,
   `customer_id` int(11) NOT NULL,
   `full_name` varchar(100) NOT NULL,
-  `contact_number` varchar(12) NOT NULL,
+  `contact_number` varchar(16) NOT NULL,
   `address_line` varchar(255) NOT NULL,
   `city` varchar(100) NOT NULL,
   `region` varchar(100) NOT NULL,
@@ -124,7 +124,8 @@ INSERT INTO `customer` (`user_id`, `customer_id`, `full_name`, `contact_number`,
 (18, 6, 'Jojana Jean Baglan Garabillo', '0202', '', '', '', ''),
 (17, 7, 'Leonor Rivera', '0101', '', '', '', ''),
 (19, 8, '', '', '', '', '', ''),
-(20, 9, 'Leonor Rivera', '2345678', '', '', '', '');
+(20, 9, 'Leonor Rivera', '2345678', '', '', '', ''),
+(6, 10, 'RHOANNE NICOLE ANTONIO', 'UConv+TcM+a7', '', '', '', '');
 
 -- --------------------------------------------------------
 
@@ -190,6 +191,13 @@ CREATE TABLE `locked_accs` (
   `date_time` datetime NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `locked_accs`
+--
+
+INSERT INTO `locked_accs` (`locked_id`, `user_id`, `attempts`, `date_time`) VALUES
+(1, 6, 3, '2026-05-03 10:56:38');
+
 -- --------------------------------------------------------
 
 --
@@ -203,6 +211,24 @@ CREATE TABLE `login_history` (
   `logout_time` datetime DEFAULT NULL,
   `status` enum('success','failed') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `login_history`
+--
+
+INSERT INTO `login_history` (`login_id`, `user_id`, `login_time`, `logout_time`, `status`) VALUES
+(1, 1, '2026-05-03 10:55:53', NULL, 'success'),
+(2, 6, '2026-05-03 10:56:31', NULL, 'failed'),
+(3, 6, '2026-05-03 10:56:35', NULL, 'failed'),
+(4, 6, '2026-05-03 10:56:38', NULL, 'failed'),
+(5, 1, '2026-05-03 10:56:49', NULL, 'success'),
+(6, 1, '2026-05-03 10:58:48', '2026-05-03 10:58:52', 'success'),
+(7, 1, '2026-05-03 10:59:05', '2026-05-03 10:59:10', 'success'),
+(8, 1, '2026-05-03 10:59:58', '2026-05-03 11:01:27', 'success'),
+(9, 6, '2026-05-03 11:01:41', '2026-05-03 11:02:01', 'success'),
+(10, 1, '2026-05-03 11:02:12', '2026-05-03 11:05:27', 'success'),
+(11, 6, '2026-05-03 11:15:16', NULL, 'failed'),
+(12, 6, '2026-05-03 11:15:35', NULL, 'success');
 
 -- --------------------------------------------------------
 
@@ -788,7 +814,7 @@ ALTER TABLE `conversation`
 -- AUTO_INCREMENT for table `customer`
 --
 ALTER TABLE `customer`
-  MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `delivery_tracking`
@@ -806,13 +832,13 @@ ALTER TABLE `inventory_restock`
 -- AUTO_INCREMENT for table `locked_accs`
 --
 ALTER TABLE `locked_accs`
-  MODIFY `locked_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `locked_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `login_history`
 --
 ALTER TABLE `login_history`
-  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `message`

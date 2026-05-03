@@ -109,7 +109,7 @@ if (isset($_GET['action'], $_GET['id'])) {
                     VALUES (?, ?, ?, '', '', '', '')
                 ");
                 $fullName = $seller['full_name'] ?? $seller['shop_name'];
-                $contactNumber = $seller['contact_number'] ?? '';
+                $contactNumber = encrypt_data($seller['contact_number'] ?? '');
                 $insertCustomerStmt->bind_param("iss", $seller['user_id'], $fullName, $contactNumber);
                 $insertCustomerStmt->execute();
             }
@@ -375,7 +375,7 @@ if (isset($_GET['get_details']) && isset($_GET['id'])) {
             'full_name' => $seller['full_name'] ?? ($metadata['full_name'] ?? $seller['username']),
             'shop_name' => $seller['shop_name'],
             'shop_address' => $seller['shop_address'],
-            'contact_number' => $seller['contact_number'],
+            'contact_number' => decrypt_data($seller['contact_number']),
             'is_approved' => $seller['is_approved'],
             'created_at' => $seller['created_at'],
             'metadata' => $metadata,

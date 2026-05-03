@@ -193,7 +193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         INSERT INTO seller (user_id, full_name, shop_name, shop_description, shop_address, contact_number, is_approved)
                         VALUES (?, ?, ?, ?, ?, ?, 0)
                     ");
-                    $insertSellerStmt->bind_param("isssss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['shop_address'], $form['contact_number']);
+                    $encryptedContact = encrypt_data($form['contact_number']);
+                    $insertSellerStmt->bind_param("isssss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['shop_address'], $encryptedContact);
                     $insertSellerStmt->execute();
 
                     // Ensure role is set to Seller (3)

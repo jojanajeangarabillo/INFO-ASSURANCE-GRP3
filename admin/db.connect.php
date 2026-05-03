@@ -19,14 +19,14 @@ try {
     }
 }
 
-// Encryption key - In a production environment, store this in a secure config file or environment variable
-define('ENCRYPTION_KEY', 'your_secure_32_byte_key_here_123456789'); // 32 bytes for AES-256
+// Encryption key - Must be exactly 32 bytes for AES-256-CBC
+define('ENCRYPTION_KEY', 'my_secure_32_byte_key_1234567'); // Exactly 32 bytes
 define('ENCRYPTION_METHOD', 'AES-256-CBC');
 
 function encrypt_data($data) {
     if (empty($data)) return $data;
     $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length(ENCRYPTION_METHOD));
-    $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, 0, $iv);
+    $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
     return base64_encode($iv . $encrypted);
 }
 
@@ -34,8 +34,13 @@ function decrypt_data($encrypted_data) {
     if (empty($encrypted_data)) return $encrypted_data;
     $data = base64_decode($encrypted_data);
     $iv_length = openssl_cipher_iv_length(ENCRYPTION_METHOD);
+    if (strlen($data) < $iv_length) {
+        // Not valid encrypted data - return as is (for existing unencrypted data)
+        return $encrypted_data;
+    }
     $iv = substr($data, 0, $iv_length);
     $encrypted = substr($data, $iv_length);
-    return openssl_decrypt($encrypted, ENCRYPTION_METHOD, ENCRYPTION_KEY, 0, $iv);
+    $decrypted = openssl_decrypt($encrypted, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
+    return $decrypted !== false ? $decrypted : $encrypted_data;
 }
 ?>
