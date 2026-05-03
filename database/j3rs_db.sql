@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 03, 2026 at 05:17 AM
+-- Generation Time: May 03, 2026 at 06:05 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -30,7 +30,7 @@ SET time_zone = "+00:00";
 CREATE TABLE `audit_log` (
   `log_id` int(11) NOT NULL,
   `user_id` int(11) DEFAULT NULL,
-  `action` enum('login','logout','create','update','delete','view') NOT NULL,
+  `action` varchar(50) NOT NULL,
   `module` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
@@ -125,7 +125,7 @@ INSERT INTO `customer` (`user_id`, `customer_id`, `full_name`, `contact_number`,
 (17, 7, 'Leonor Rivera', '0101', '', '', '', ''),
 (19, 8, '', '', '', '', '', ''),
 (20, 9, 'Leonor Rivera', '2345678', '', '', '', ''),
-(6, 10, 'RHOANNE NICOLE ANTONIO', 'UConv+TcM+a7', '', '', '', '');
+(6, 10, 'RHOANNE NICOLE ANTONIO', 'YP26jXkRbUv5EIh0', 'n7mmJgnn72lCJ7DlXUiyxLouAUpKYGbrQ44/6e8NH/s+26B6Sa9wT+wfNqMYlQhAgxIaXACX6cqNbAHsR/4lsg==', 'PASIG', 'Metro Manila', '1609');
 
 -- --------------------------------------------------------
 
@@ -228,7 +228,10 @@ INSERT INTO `login_history` (`login_id`, `user_id`, `login_time`, `logout_time`,
 (9, 6, '2026-05-03 11:01:41', '2026-05-03 11:02:01', 'success'),
 (10, 1, '2026-05-03 11:02:12', '2026-05-03 11:05:27', 'success'),
 (11, 6, '2026-05-03 11:15:16', NULL, 'failed'),
-(12, 6, '2026-05-03 11:15:35', NULL, 'success');
+(12, 6, '2026-05-03 11:15:35', NULL, 'success'),
+(13, 6, '2026-05-03 11:18:38', '2026-05-03 11:37:14', 'success'),
+(14, 6, '2026-05-03 11:37:34', '2026-05-03 11:37:57', 'success'),
+(15, 7, '2026-05-03 11:38:14', '2026-05-03 11:39:32', 'success');
 
 -- --------------------------------------------------------
 
@@ -838,7 +841,7 @@ ALTER TABLE `locked_accs`
 -- AUTO_INCREMENT for table `login_history`
 --
 ALTER TABLE `login_history`
-  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `message`
