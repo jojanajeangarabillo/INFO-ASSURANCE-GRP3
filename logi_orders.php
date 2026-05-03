@@ -87,6 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $update_tracking->execute();
                 $update_tracking->close();
                 
+                log_audit_action('update', 'Logistics Orders', 'Order #' . $order_id . ' status updated to ' . $new_status);
+                
                 // Send notification to customer
                 $order_details_stmt = $conn->prepare("
                     SELECT o.order_number, o.customer_id, u.username, u.role_id

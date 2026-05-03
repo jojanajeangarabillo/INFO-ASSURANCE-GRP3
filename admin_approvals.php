@@ -139,6 +139,7 @@ if (isset($_GET['action'], $_GET['id'])) {
             
             $notifStmt->bind_param("iss", $seller['user_id'], $notifTitle, $notifMessage);
             $notifStmt->execute();
+            log_audit_action('update', 'Admin Approvals', 'Seller ID ' . $sellerId . ' approved as ' . $roleType);
         }
         
         if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
@@ -179,6 +180,7 @@ if (isset($_GET['action'], $_GET['id'])) {
             $stmt = $conn->prepare("DELETE FROM seller WHERE seller_id = ?");
             $stmt->bind_param("i", $sellerId);
             $stmt->execute();
+            log_audit_action('delete', 'Admin Approvals', 'Seller ID ' . $sellerId . ' rejected');
         }
         
         if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {

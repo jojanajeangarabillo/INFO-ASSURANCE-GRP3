@@ -1,6 +1,8 @@
 <?php
 session_start();
 
+require_once 'admin/db.connect.php';
+
 function require_login(): void
 {
     if (!isset($_SESSION['user_id'])) {

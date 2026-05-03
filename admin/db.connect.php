@@ -43,4 +43,23 @@ function decrypt_data($encrypted_data) {
     $decrypted = openssl_decrypt($encrypted, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
     return $decrypted !== false ? $decrypted : $encrypted_data;
 }
+
+function log_audit_action($action, $module, $description = '') {
+    global $conn;
+    
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    
+    $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : null;
+    $created_at = date('Y-m-d H:i:s');
+    
+    $stmt = $conn->prepare("
+        INSERT INTO audit_log (user_id, action, module, description, created_at) 
+        VALUES (?, ?, ?, ?, ?)
+    ");
+    $stmt->bind_param("issss", $user_id, $action, $module, $description, $created_at);
+    $stmt->execute();
+    $stmt->close();
+}
 ?>

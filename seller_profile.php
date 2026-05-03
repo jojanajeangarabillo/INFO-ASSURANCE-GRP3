@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         $stmt->bind_param("ssssi", $shop_name, $shop_description, $shop_address, $encryptedContact, $user_id);
         if ($stmt->execute()) {
             $message = "Profile updated successfully!";
+            log_audit_action('update', 'Seller Profile', 'User updated their seller profile information');
         } else {
             $error = "Failed to update profile.";
         }

@@ -37,6 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Store login_id in session for logout tracking
         $_SESSION['current_login_id'] = $conn->insert_id;
         
+        // Log audit action for login
+        log_audit_action('login', 'Authentication', 'User logged in successfully');
+        
         // Cleanup temp session
         unset($_SESSION['temp_user_id']);
         unset($_SESSION['temp_username']);

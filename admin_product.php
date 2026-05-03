@@ -1,7 +1,6 @@
 <?php
 require_once 'auth.php';
 require_roles([1]);
-require_once 'admin/db.connect.php';
 // Fetch session timeout from database
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);

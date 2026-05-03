@@ -109,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_product'])) {
             
             $conn->commit();
             $message = "Product added successfully with " . count($variants_data) . " variant(s)!";
+            log_audit_action('create', 'Seller Products', 'User added a new product');
         } catch (Exception $e) {
             $conn->rollback();
             $error = "Failed to add product: " . $e->getMessage();
@@ -163,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_variant'])) {
             
             if ($stmt->execute()) {
                 $message = "Variant added successfully to the product!";
+                log_audit_action('create', 'Seller Products', 'User added a new product variant');
             } else {
                 $error = "Failed to add variant: " . $stmt->error;
             }
@@ -197,6 +199,7 @@ if (isset($_GET['delete_variant'])) {
         $stmt->bind_param("i", $variant_id);
         if ($stmt->execute()) {
             $message = "Variant deleted successfully!";
+            log_audit_action('delete', 'Seller Products', 'User deleted a product variant');
         } else {
             $error = "Failed to delete variant.";
         }
@@ -265,6 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_variant'])) {
             
             if ($stmt->execute()) {
                 $message = "Variant updated successfully!";
+                log_audit_action('update', 'Seller Products', 'User updated a product variant');
             } else {
                 $error = "Failed to update variant.";
             }

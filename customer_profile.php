@@ -159,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['username'] = $username;
                     $alert = 'Profile updated successfully.';
                     $alertType = 'success';
+                    log_audit_action('update', 'Customer Profile', 'User updated their profile information');
                 }
             }
         } elseif ($action === 'send_password_otp') {
@@ -183,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $alertType = 'success';
                     $otpSent = true;
                     $_SESSION['otp_sent'] = true;
+                    log_audit_action('otp_request', 'Customer Profile', 'User requested password change OTP');
                 } else {
                     $alert = 'Unable to send OTP email. Please try again.';
                     $alertType = 'danger';
@@ -205,6 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $alertType = 'success';
                     $otpVerified = true;
                     $_SESSION['otp_verified'] = true;
+                    log_audit_action('otp_verify', 'Customer Profile', 'User verified password change OTP');
                     $_SESSION['verified_otp'] = $otpInput;
                 }
             }
@@ -248,6 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $alert = 'Password changed successfully! Please login again with your new password.';
                     $alertType = 'success';
+                    log_audit_action('password_change', 'Customer Profile', 'User changed their password');
                     
                     // Logout user after password change
                     session_unset();

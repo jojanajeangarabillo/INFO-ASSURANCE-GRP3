@@ -2,6 +2,9 @@
 session_start();
 require 'admin/db.connect.php';
 
+// Log audit action for logout
+log_audit_action('logout', 'Authentication', 'User logged out');
+
 // Update logout time if we have a current login id
 if (isset($_SESSION['current_login_id'])) {
     $stmt = $conn->prepare("UPDATE login_history SET logout_time = NOW() WHERE login_id = ?");

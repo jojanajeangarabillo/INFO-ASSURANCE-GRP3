@@ -82,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restock_submit'])) {
 
                 $conn->commit();
                 $message = "Restock successful! Added " . $quantity . " units.";
+                log_audit_action('update', 'Seller Inventory', 'User restocked inventory: added ' . $quantity . ' units');
                 
                 // Redirect to refresh the page
                 header("Location: seller_inventory.php?success=1");
@@ -142,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adjust_stock'])) {
                     
                     $conn->commit();
                     $message = "Stock adjusted successfully! New stock: " . $new_stock;
+                    log_audit_action('update', 'Seller Inventory', 'User adjusted inventory: ' . ($adjustment > 0 ? '+' : '') . $adjustment . ' units');
                     
                     header("Location: seller_inventory.php?success=1");
                     exit();
