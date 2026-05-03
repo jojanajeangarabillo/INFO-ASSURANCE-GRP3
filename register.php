@@ -1,11 +1,5 @@
 <?php
 session_start();
-require 'Captcha/src/Gregwar/Captcha/CaptchaBuilderInterface.php';
-require 'Captcha/src/Gregwar/Captcha/PhraseBuilderInterface.php';
-require 'Captcha/src/Gregwar/Captcha/ImageFileHandler.php';
-require 'Captcha/src/Gregwar/Captcha/PhraseBuilder.php';
-require 'Captcha/src/Gregwar/Captcha/CaptchaBuilder.php';
-
 require 'admin/db.connect.php';
 
 // Load system settings
@@ -50,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
   $captcha = trim($_POST['captcha'] ?? '');
 
   // Validate captcha
-  if (!isset($_SESSION['captcha']) || $captcha !== $_SESSION['captcha']) {
+  if (!isset($_SESSION['captcha_text']) || $captcha !== $_SESSION['captcha_text']) {
     $error = 'Invalid captcha';
   } elseif (empty($username) || empty($email) || empty($password)) {
     $error = 'All fields are required';
@@ -102,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         if (send_email($email, $subject, $body)) {
           // Clear captcha on success
-          unset($_SESSION['captcha']);
+          unset($_SESSION['captcha_text']);
           // Redirect to OTP verification page
           header("Location: verify_otp.php?email=" . urlencode($email));
           exit;
@@ -119,11 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
   $conn->close();
 }
 
-// Generate captcha for the form
-$builder = new Gregwar\Captcha\CaptchaBuilder();
-$builder->build();
-$_SESSION['captcha'] = $builder->getPhrase();
-$captchaImage = $builder->inline();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -258,7 +247,8 @@ $captchaImage = $builder->inline();
           <div id="captchaDiv" style="display:none;" class="bg-brand-50 border rounded-xl p-4">
             <label class="block mb-1 font-medium">Enter the Captcha</label>
             <input type="text" name="captcha" class="w-full p-3 border rounded-lg">
-            <img src="<?php echo $captchaImage; ?>" alt="Captcha" class="mt-2">
+            <img src="new_captcha/captcha.php" alt="Captcha" class="mt-2" id="captchaImg" onclick="refreshCaptcha()">
+            <button type="button" onclick="refreshCaptcha()" class="text-xs text-brand-900 underline mt-1">Refresh</button>
           </div>
 
           <!-- TERMS -->
@@ -369,6 +359,10 @@ $captchaImage = $builder->inline();
       document.getElementById("termsModal").classList.add("hidden");
     }
 
+    function refreshCaptcha() {
+      document.getElementById('captchaImg').src = 'new_captcha/captcha.php?' + new Date().getTime();
+    }
+    
     function acceptTerms() {
       document.getElementById("terms").checked = true;
       toggleButton();
