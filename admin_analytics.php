@@ -28,7 +28,6 @@ if (!isset($_SESSION['last_activity'])) {
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
 // Fetch analytics metrics based on actual database schema
-// Top category gender (since we don't have category table, use category_gender from product)
 $topGenderStmt = $conn->prepare("
     SELECT 
         p.category_gender, 
@@ -51,7 +50,7 @@ $avgOrderStmt->execute();
 $avgOrderValue = $avgOrderStmt->get_result()->fetch_assoc()['avg_order'];
 $avgOrderStmt->close();
 
-// Repeat customers (using customer_id instead of user_id)
+// Repeat customers
 $repeatCustomersStmt = $conn->prepare("
     SELECT 
         COUNT(DISTINCT customer_id) as total_customers,
@@ -70,7 +69,7 @@ $repeatCustomers = $repeatResult['total_customers'] > 0
     : 0;
 $repeatCustomersStmt->close();
 
-// Seller performance (using order_item.seller_id)
+// Seller performance
 $sellerPerformanceStmt = $conn->prepare("
     SELECT 
         s.shop_name,
@@ -100,7 +99,7 @@ $sellerPerformanceStmt->close();
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="stylesheet" href="sidebar.css">
 
-  <script>
+<script>
     const timeoutMs = <?php echo $timeout_ms; ?>;
     let logoutTimer;
 

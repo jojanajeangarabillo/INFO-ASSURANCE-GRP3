@@ -82,6 +82,12 @@ if (isset($_POST['login'])) {
         $lock_stmt = $conn->prepare("UPDATE user SET attempts = ?, is_locked = 1 WHERE user_id = ?");
         $lock_stmt->bind_param("ii", $new_attempts, $row['user_id']);
         $lock_stmt->execute();
+        
+        // Insert into locked_accs table
+        $locked_stmt = $conn->prepare("INSERT INTO locked_accs (user_id, attempts, date_time) VALUES (?, ?, NOW())");
+        $locked_stmt->bind_param("ii", $row['user_id'], $new_attempts);
+        $locked_stmt->execute();
+        
         $_SESSION['error_message'] = "Too many failed attempts. Your account has been locked.";
       } else {
         $update_stmt = $conn->prepare("UPDATE user SET attempts = ? WHERE user_id = ?");

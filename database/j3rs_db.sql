@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: May 02, 2026 at 08:13 AM
+-- Generation Time: May 03, 2026 at 04:49 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -24,21 +24,6 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
--- Table structure for table `admin_logs`
---
-
-CREATE TABLE `admin_logs` (
-  `log_id` int(11) NOT NULL,
-  `admin_id` int(11) NOT NULL,
-  `action` varchar(255) NOT NULL,
-  `details` text DEFAULT NULL,
-  `ip_address` varchar(45) DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `audit_log`
 --
 
@@ -48,7 +33,6 @@ CREATE TABLE `audit_log` (
   `action` enum('login','logout','create','update','delete','view') NOT NULL,
   `module` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
-  `ip_address` varchar(45) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -140,8 +124,7 @@ INSERT INTO `customer` (`user_id`, `customer_id`, `full_name`, `contact_number`,
 (18, 6, 'Jojana Jean Baglan Garabillo', '0202', '', '', '', ''),
 (17, 7, 'Leonor Rivera', '0101', '', '', '', ''),
 (19, 8, '', '', '', '', '', ''),
-(20, 9, 'Leonor Rivera', '2345678', '', '', '', ''),
-(24, 10, '', '', '', '', '', '');
+(20, 9, 'Leonor Rivera', '2345678', '', '', '', '');
 
 -- --------------------------------------------------------
 
@@ -197,6 +180,19 @@ INSERT INTO `inventory_restock` (`restock_id`, `variant_id`, `seller_id`, `quant
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `locked_accs`
+--
+
+CREATE TABLE `locked_accs` (
+  `locked_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `attempts` int(11) NOT NULL,
+  `date_time` datetime NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `login_history`
 --
 
@@ -205,16 +201,8 @@ CREATE TABLE `login_history` (
   `user_id` int(11) DEFAULT NULL,
   `login_time` datetime NOT NULL DEFAULT current_timestamp(),
   `logout_time` datetime DEFAULT NULL,
-  `status` enum('success','failed') NOT NULL,
-  `ip_address` varchar(45) DEFAULT NULL
+  `status` enum('success','failed') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `login_history`
---
-
-INSERT INTO `login_history` (`login_id`, `user_id`, `login_time`, `logout_time`, `status`, `ip_address`) VALUES
-(1, 1, '2026-05-02 13:59:07', NULL, 'success', NULL);
 
 -- --------------------------------------------------------
 
@@ -497,53 +485,6 @@ INSERT INTO `seller` (`seller_id`, `user_id`, `full_name`, `shop_name`, `shop_de
 -- --------------------------------------------------------
 
 --
--- Table structure for table `site_settings`
---
-
-CREATE TABLE `site_settings` (
-  `setting_id` int(11) NOT NULL,
-  `setting_key` varchar(100) NOT NULL,
-  `setting_value` text DEFAULT NULL,
-  `setting_type` enum('text','textarea','image','json','array') DEFAULT 'text',
-  `setting_group` enum('general','categories','about','contact','social','features','hero') DEFAULT 'general',
-  `display_order` int(11) DEFAULT 0,
-  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `site_settings`
---
-
-INSERT INTO `site_settings` (`setting_id`, `setting_key`, `setting_value`, `setting_type`, `setting_group`, `display_order`, `created_at`, `updated_at`) VALUES
-(1, 'site_name', 'J3RS Shop Co.', 'text', 'general', 1, '2026-05-02 14:01:22', NULL),
-(2, 'site_logo', 'JERS-LOGO.png', 'image', 'general', 2, '2026-05-02 14:01:22', NULL),
-(3, 'site_favicon', 'favicon.ico', 'image', 'general', 3, '2026-05-02 14:01:22', NULL),
-(4, 'default_language', 'English (US)', 'text', 'general', 4, '2026-05-02 14:01:22', NULL),
-(5, 'default_currency', 'PHP (?)', 'text', 'general', 5, '2026-05-02 14:01:22', NULL),
-(6, 'timezone', 'Asia/Manila', 'text', 'general', 6, '2026-05-02 14:01:22', NULL),
-(7, 'hero_title', 'Curated essentials for <br> <span>modern living.</span>', 'textarea', 'hero', 1, '2026-05-02 14:01:22', NULL),
-(8, 'hero_subtitle', 'Discover our handpicked selection of premium products designed to elevate your everyday experience. Quality meets aesthetics.', 'textarea', 'hero', 2, '2026-05-02 14:01:22', NULL),
-(9, 'hero_button_text', 'Shop Collection \Z', 'text', 'hero', 3, '2026-05-02 14:01:22', NULL),
-(10, 'hero_background_image', 'labg.jpg', 'image', 'hero', 4, '2026-05-02 14:01:22', NULL),
-(11, 'categories', '[\"All\",\"Women\",\"Men\"]', 'json', 'categories', 1, '2026-05-02 14:01:22', '2026-05-02 14:11:16'),
-(12, 'about_title', 'About J3RS Shop Co.', 'text', 'about', 1, '2026-05-02 14:01:22', NULL),
-(13, 'about_content', 'J3RS Shop Co. is an online clothing store dedicated to bringing you stylish, trendy, and affordable fashion for everyday wear. We aim to make it easy for everyone to express their style without spending too much.<br><br>Our mission is to provide high quality clothing inspired by the latest trends while keeping prices accessible. We continuously update our collections to ensure you always have something new to discover.<br><br>At J3RS Shop Co., we value customer satisfaction. That\'s why we offer fast and reliable shipping, easy returns, and a smooth shopping experience from browsing to checkout.<br><br>Whether you\'re looking for casual outfits, statement pieces, or everyday essentials, J3RS Shop Co. is here to help you find your perfect style.', 'textarea', 'about', 2, '2026-05-02 14:01:22', NULL),
-(14, 'contact_email', 'support@j3rsshopco.com', 'text', 'contact', 1, '2026-05-02 14:01:22', NULL),
-(15, 'contact_phone', '+63 912 345 6789', 'text', 'contact', 2, '2026-05-02 14:01:22', NULL),
-(16, 'contact_location', 'Philippines, Pasig City', 'text', 'contact', 3, '2026-05-02 14:01:22', NULL),
-(17, 'contact_phone_hours', 'Mon-Sat, 9AM - 6PM', 'text', 'contact', 4, '2026-05-02 14:01:22', NULL),
-(18, 'contact_email_response', 'We\'ll respond within 24 hours', 'text', 'contact', 5, '2026-05-02 14:01:22', NULL),
-(19, 'facebook_url', 'https://facebook.com/j3rsshopco', 'text', 'social', 1, '2026-05-02 14:01:22', NULL),
-(20, 'instagram_url', 'https://instagram.com/j3rsshopco', 'text', 'social', 2, '2026-05-02 14:01:22', NULL),
-(21, 'twitter_url', 'https://twitter.com/j3rsshopco', 'text', 'social', 3, '2026-05-02 14:01:22', NULL),
-(22, 'tiktok_url', 'https://tiktok.com/@j3rsshopco', 'text', 'social', 4, '2026-05-02 14:01:22', NULL),
-(23, 'features', '[{\"icon\":\"??\",\"title\":\"Free Shipping\",\"description\":\"On all orders over ?2,000. Fast and reliable delivery nationwide.\"},{\"icon\":\"??\",\"title\":\"Secure Payments\",\"description\":\"Your transactions are protected with strong encryption.\"},{\"icon\":\"??\",\"title\":\"Easy Returns\",\"description\":\"Return items within 30 days for a full refund, no questions asked.\"}]', 'json', 'features', 1, '2026-05-02 14:01:22', NULL),
-(24, 'why_choose_us', '[{\"icon\":\"??\",\"title\":\"Affordable Prices\",\"description\":\"Premium quality at prices everyone can enjoy\"},{\"icon\":\"??\",\"title\":\"Fast & Reliable Shipping\",\"description\":\"Quick delivery right to your doorstep\"},{\"icon\":\"??\",\"title\":\"Easy Returns\",\"description\":\"Hassle-free return policy within 30 days\"},{\"icon\":\"??\",\"title\":\"Trendy Styles\",\"description\":\"Always updated with latest fashion trends\"}]', 'json', 'about', 3, '2026-05-02 14:01:22', NULL);
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `system_settings`
 --
 
@@ -580,23 +521,23 @@ CREATE TABLE `user` (
   `attempts` int(11) NOT NULL DEFAULT 0,
   `is_locked` int(11) NOT NULL DEFAULT 0,
   `role_id` int(11) NOT NULL,
-  `is_active` tinyint(4) DEFAULT 1
+  `is_active` tinyint(4) DEFAULT 1,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `user`
 --
 
-INSERT INTO `user` (`user_id`, `username`, `first_name`, `last_name`, `email`, `password`, `otp_code`, `otp_expiry`, `verification_token`, `token_expiry`, `is_activated`, `mfa_secret`, `last_failed_login`, `attempts`, `is_locked`, `role_id`, `is_active`) VALUES
-(1, 'admin', NULL, NULL, 'antonio_rhoannenicole@plpasig.edu.ph', '$2y$10$LdRoPWBEOsVfBfmTI3GO5.1JMD/eYXapDUljcxJtQN4G6ji0VtFfG', '', '2026-04-22 14:54:03', '', '2026-04-22 14:54:03', 1, 'NPHOGQXCEBULYTDN', '2026-04-22 20:55:17', 0, 0, 1, 1),
-(6, 'test', NULL, NULL, 'n0305933@gmail.com', '$2y$10$.Y40Fpy2G.188piUPEVFzO.pd6QJD9rukbiTbHaAfBKyYYq0hXG6m', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '3DBWVGAURVBVXHJM', '2026-04-19 22:07:08', 0, 0, 2, 1),
-(7, 'seller', NULL, NULL, 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 0, 0, 3, 1),
-(11, 'customer', NULL, NULL, 'n42710140@gmail.com', '$2y$10$AzlQdqE3kZLviGUOCOlgiu6aB..qABPjcXFzEOgn3o2Z5ASem0Rqe', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '', '2026-04-23 15:59:21', 0, 0, 2, 1),
-(18, 'jean', NULL, NULL, 'garabillo_jojanajean@plpasig.edu.ph', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, 'UEEQ52YZDW3QGUMU', NULL, 0, 0, 4, 1),
-(19, 'pamcustomer', NULL, NULL, 'pam066198@gmail.com', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '4AP3DFAQT5SNFFQO', '2026-04-23 18:57:23', 0, 0, 2, 1),
-(20, 'leonorrivera', NULL, NULL, 'ruberducky032518@gmail.com', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '4FUCJJRBO4TIAUS7', '2026-04-25 08:22:01', 0, 0, 3, 1),
-(23, 'JJRS', NULL, NULL, 'logistics@example.com', '$2y$10$SvIFRXNS0yCLCRMQr4Ej..1sPudPdQG9pzM5ruJuTDZVhweoChYkK', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, 'WL2ZQOXBWN4QX74V', NULL, 0, 0, 5, 1),
-(24, 'EmeCustomer', NULL, NULL, 'jojanajeangarabillo@gmail.com', '$2y$10$kqP15D6dQNoix33AlU47EejuvSzgkqOICqQ23OpA2EedmceLgSkk.', '132734', '2026-05-02 11:44:46', '', '0000-00-00 00:00:00', 0, '', '2026-05-02 11:34:46', 0, 0, 2, 1);
+INSERT INTO `user` (`user_id`, `username`, `first_name`, `last_name`, `email`, `password`, `otp_code`, `otp_expiry`, `verification_token`, `token_expiry`, `is_activated`, `mfa_secret`, `last_failed_login`, `attempts`, `is_locked`, `role_id`, `is_active`, `created_at`) VALUES
+(1, 'admin', NULL, NULL, 'antonio_rhoannenicole@plpasig.edu.ph', '$2y$10$LdRoPWBEOsVfBfmTI3GO5.1JMD/eYXapDUljcxJtQN4G6ji0VtFfG', '', '2026-04-22 14:54:03', '', '2026-04-22 14:54:03', 1, 'NPHOGQXCEBULYTDN', '2026-04-22 20:55:17', 0, 0, 1, 1, '2026-05-03 10:46:33'),
+(6, 'test', NULL, NULL, 'n0305933@gmail.com', '$2y$10$.Y40Fpy2G.188piUPEVFzO.pd6QJD9rukbiTbHaAfBKyYYq0hXG6m', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '3DBWVGAURVBVXHJM', '2026-04-19 22:07:08', 0, 0, 2, 1, '2026-05-03 10:46:33'),
+(7, 'seller', NULL, NULL, 'testsubjectschool155@gmail.com', '$2y$10$pGCiO7zY1RaL.xixVgU51edLMxbuomIIVdvUbfnLIEoPHDwF4mq5y', '', '2026-04-20 17:11:55', '', '2026-04-20 17:11:55', 1, 'QVNQBCXKNKHOKB4A', '2026-04-20 23:12:40', 0, 0, 3, 1, '2026-05-03 10:46:33'),
+(11, 'customer', NULL, NULL, 'n42710140@gmail.com', '$2y$10$AzlQdqE3kZLviGUOCOlgiu6aB..qABPjcXFzEOgn3o2Z5ASem0Rqe', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '', '2026-04-23 15:59:21', 0, 0, 2, 1, '2026-05-03 10:46:33'),
+(18, 'jean', NULL, NULL, 'garabillo_jojanajean@plpasig.edu.ph', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, 'UEEQ52YZDW3QGUMU', NULL, 0, 0, 4, 1, '2026-05-03 10:46:33'),
+(19, 'pamcustomer', NULL, NULL, 'pam066198@gmail.com', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '4AP3DFAQT5SNFFQO', '2026-04-23 18:57:23', 0, 0, 2, 1, '2026-05-03 10:46:33'),
+(20, 'leonorrivera', NULL, NULL, 'ruberducky032518@gmail.com', '$2y$10$HZ1Tcng4oooB7QDMAS/uN.3B2msIJqrJwgIPJS6BeHXDwV8U04iA2', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, '4FUCJJRBO4TIAUS7', '2026-04-25 08:22:01', 0, 0, 3, 1, '2026-05-03 10:46:33'),
+(23, 'JJRS', NULL, NULL, 'logistics@example.com', '$2y$10$SvIFRXNS0yCLCRMQr4Ej..1sPudPdQG9pzM5ruJuTDZVhweoChYkK', '', '0000-00-00 00:00:00', '', '0000-00-00 00:00:00', 1, 'WL2ZQOXBWN4QX74V', NULL, 0, 0, 5, 1, '2026-05-03 10:46:33');
 
 -- --------------------------------------------------------
 
@@ -627,14 +568,6 @@ CREATE TABLE `wishlist_item` (
 --
 -- Indexes for dumped tables
 --
-
---
--- Indexes for table `admin_logs`
---
-ALTER TABLE `admin_logs`
-  ADD PRIMARY KEY (`log_id`),
-  ADD KEY `idx_admin_id` (`admin_id`),
-  ADD KEY `idx_created_at` (`created_at`);
 
 --
 -- Indexes for table `audit_log`
@@ -690,6 +623,13 @@ ALTER TABLE `inventory_restock`
   ADD PRIMARY KEY (`restock_id`),
   ADD KEY `idx_restock_variant` (`variant_id`),
   ADD KEY `idx_restock_seller` (`seller_id`);
+
+--
+-- Indexes for table `locked_accs`
+--
+ALTER TABLE `locked_accs`
+  ADD PRIMARY KEY (`locked_id`),
+  ADD KEY `user_id` (`user_id`);
 
 --
 -- Indexes for table `login_history`
@@ -787,15 +727,6 @@ ALTER TABLE `seller`
   ADD UNIQUE KEY `uk_seller_user_id` (`user_id`);
 
 --
--- Indexes for table `site_settings`
---
-ALTER TABLE `site_settings`
-  ADD PRIMARY KEY (`setting_id`),
-  ADD UNIQUE KEY `setting_key` (`setting_key`),
-  ADD KEY `idx_setting_key` (`setting_key`),
-  ADD KEY `idx_setting_group` (`setting_group`);
-
---
 -- Indexes for table `system_settings`
 --
 ALTER TABLE `system_settings`
@@ -830,12 +761,6 @@ ALTER TABLE `wishlist_item`
 --
 
 --
--- AUTO_INCREMENT for table `admin_logs`
---
-ALTER TABLE `admin_logs`
-  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
 -- AUTO_INCREMENT for table `audit_log`
 --
 ALTER TABLE `audit_log`
@@ -863,7 +788,7 @@ ALTER TABLE `conversation`
 -- AUTO_INCREMENT for table `customer`
 --
 ALTER TABLE `customer`
-  MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `customer_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `delivery_tracking`
@@ -878,10 +803,16 @@ ALTER TABLE `inventory_restock`
   MODIFY `restock_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
+-- AUTO_INCREMENT for table `locked_accs`
+--
+ALTER TABLE `locked_accs`
+  MODIFY `locked_id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `login_history`
 --
 ALTER TABLE `login_history`
-  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `login_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `message`
@@ -950,12 +881,6 @@ ALTER TABLE `seller`
   MODIFY `seller_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
--- AUTO_INCREMENT for table `site_settings`
---
-ALTER TABLE `site_settings`
-  MODIFY `setting_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
-
---
 -- AUTO_INCREMENT for table `system_settings`
 --
 ALTER TABLE `system_settings`
@@ -965,7 +890,7 @@ ALTER TABLE `system_settings`
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=25;
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
 
 --
 -- AUTO_INCREMENT for table `wishlist`

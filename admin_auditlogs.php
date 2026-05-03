@@ -42,6 +42,16 @@ $auditLogStmt = $conn->query("
     LIMIT 100
 ");
 $auditLog = $auditLogStmt->fetch_all(MYSQLI_ASSOC);
+
+// Fetch locked accounts
+$lockedAccsStmt = $conn->query("
+    SELECT la.*, u.username 
+    FROM locked_accs la 
+    LEFT JOIN user u ON la.user_id = u.user_id 
+    ORDER BY la.date_time DESC 
+    LIMIT 100
+");
+$lockedAccs = $lockedAccsStmt->fetch_all(MYSQLI_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -198,6 +208,7 @@ function showTab(tabId) {
 <div class="tabs mb-4">
   <button class="active" onclick="showTab('loginHistory')">Login History</button>
   <button onclick="showTab('auditLog')">Action History</button>
+  <button onclick="showTab('lockedAccounts')">Locked Accounts</button>
 </div>
 
 <!-- Login History -->
@@ -271,6 +282,36 @@ function showTab(tabId) {
               <td><?php echo htmlspecialchars($log['module']); ?></td>
               <td><?php echo htmlspecialchars($log['description'] ?? 'N/A'); ?></td>
               <td><?php echo htmlspecialchars($log['created_at']); ?></td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Locked Accounts -->
+<div id="lockedAccounts" class="tab-content" style="display: none;">
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Locked ID</th>
+          <th>User</th>
+          <th>Attempts</th>
+          <th>Date & Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if (empty($lockedAccs)): ?>
+          <tr><td colspan="4" style="text-align: center; color: #999;">No locked accounts available.</td></tr>
+        <?php else: ?>
+          <?php foreach ($lockedAccs as $acc): ?>
+            <tr>
+              <td><?php echo htmlspecialchars($acc['locked_id']); ?></td>
+              <td><strong><?php echo htmlspecialchars($acc['username'] ?? 'Unknown'); ?></strong></td>
+              <td><?php echo htmlspecialchars($acc['attempts']); ?></td>
+              <td><?php echo htmlspecialchars($acc['date_time']); ?></td>
             </tr>
           <?php endforeach; ?>
         <?php endif; ?>

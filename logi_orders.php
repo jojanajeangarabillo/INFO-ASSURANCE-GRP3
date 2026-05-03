@@ -6,6 +6,29 @@ require_once __DIR__ . '/admin/db.connect.php';
 
 $user_id = $_SESSION['user_id'] ?? 0;
 
+// Fetch session timeout from database
+$query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
+$result = mysqli_query($conn, $query);
+$row = mysqli_fetch_assoc($result);
+$timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
+
+// Check session timeout
+if (!isset($_SESSION['last_activity'])) {
+  $_SESSION['last_activity'] = time();
+} elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
+  // Session expired, logout
+  session_unset();
+  session_destroy();
+  header("Location: login.php");
+  exit;
+} else {
+  // Update last activity
+  $_SESSION['last_activity'] = time();
+}
+
+$timeout_ms = $timeout_minutes * 60 * 1000;
+
+
 // Handle bulk status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['bulk_action']) && isset($_POST['selected_orders'])) {
@@ -175,6 +198,26 @@ $orders_stmt->close();
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="sidebar.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<script>
+    const timeoutMs = <?php echo $timeout_ms; ?>;
+    let logoutTimer;
+
+    function resetTimer() {
+      clearTimeout(logoutTimer);
+      logoutTimer = setTimeout(function() {
+        alert("Session expired due to inactivity. You will be logged out.");
+        window.location.href = "logout.php";
+      }, timeoutMs);
+    }
+
+    document.addEventListener("mousemove", resetTimer);
+    document.addEventListener("keypress", resetTimer);
+    document.addEventListener("click", resetTimer);
+    document.addEventListener("scroll", resetTimer);
+
+    resetTimer();
+  </script>
 
 <style>
 body { margin: 0; font-family: 'Inter', Arial, sans-serif; background: #fdf2f6; }
