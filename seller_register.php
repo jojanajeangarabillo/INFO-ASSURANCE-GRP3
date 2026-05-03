@@ -39,7 +39,7 @@ if ($isLoggedIn) {
     if ($prefill) {
         $form['full_name'] = (string) ($prefill['customer_name'] ?? $prefill['username'] ?? '');
         $form['email'] = (string) ($prefill['email'] ?? '');
-        $form['contact_number'] = (string) ($prefill['customer_contact'] ?? '');
+        $form['contact_number'] = decrypt_data((string) ($prefill['customer_contact'] ?? ''));
         $currentRoleId = (int) ($prefill['role_id'] ?? 2);
         
         // Check if user already has seller application
@@ -182,14 +182,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             SET full_name = ?, contact_number = ?
                             WHERE user_id = ?
                         ");
-                        $updateCustomerStmt->bind_param("ssi", $form['full_name'], $form['contact_number'], $targetUserId);
+                        $encryptedCustomerContact = encrypt_data($form['contact_number']);
+                        $updateCustomerStmt->bind_param("ssi", $form['full_name'], $encryptedCustomerContact, $targetUserId);
                         $updateCustomerStmt->execute();
                     } else {
                         $insertCustomerStmt = $conn->prepare("
                             INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
                             VALUES (?, ?, ?, '', '', '', '')
                         ");
-                        $insertCustomerStmt->bind_param("iss", $targetUserId, $form['full_name'], $form['contact_number']);
+                        $encryptedCustomerContact = encrypt_data($form['contact_number']);
+                        $insertCustomerStmt->bind_param("iss", $targetUserId, $form['full_name'], $encryptedCustomerContact);
                         $insertCustomerStmt->execute();
                     }
 
@@ -213,7 +215,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         INSERT INTO seller (user_id, full_name, shop_name, shop_description, contact_number, is_approved)
                         VALUES (?, ?, ?, ?, ?, 0)
                     ");
-                    $insertSellerStmt->bind_param("issss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['contact_number']);
+                    $encryptedSellerContact = encrypt_data($form['contact_number']);
+                    $insertSellerStmt->bind_param("issss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $encryptedSellerContact);
                     $insertSellerStmt->execute();
 
                     // Send notification email to admin

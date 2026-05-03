@@ -231,7 +231,7 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
                     VALUES (?, ?, ?, '', '', '', '')
                 ");
                 $fullName = $seller['full_name'] ?? $seller['shop_name'];
-                $contactNumber = $seller['contact_number'] ?? '';
+                $contactNumber = encrypt_data($seller['contact_number'] ?? '');
                 $insertCustomerStmt->bind_param("iss", $seller['user_id'], $fullName, $contactNumber);
                 $insertCustomerStmt->execute();
             }
@@ -336,7 +336,7 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
             'success' => true,
             'full_name' => $seller['full_name'] ?? ($metadata['full_name'] ?? $seller['username']),
             'email' => $seller['email'],
-            'contact_number' => $seller['contact_number'],
+            'contact_number' => decrypt_data($seller['contact_number']),
             'shop_name' => $seller['shop_name'],
             'shop_address' => $seller['shop_address'],
             'application_type' => $applicationType,
@@ -822,7 +822,7 @@ th {
   
   <a href="admin_settings.php" class="<?php echo $current_page == 'admin_settings.php' ? 'active' : ''; ?>"><i class="fas fa-gear"></i><span class="text">Settings</span></a>
   
-  <a href="login.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
+  <a href="logout.php" class="logout"><i class="fas fa-right-from-bracket"></i><span class="text">Logout</span></a>
 </div>
 
 <script>

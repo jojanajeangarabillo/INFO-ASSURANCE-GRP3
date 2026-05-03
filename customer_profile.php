@@ -141,14 +141,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             SET full_name = ?, contact_number = ?, address_line = ?, city = ?, region = ?, postal_code = ?
                             WHERE user_id = ?
                         ");
-                        $updateCustomerStmt->bind_param("ssssssi", $fullName, $contact, $addressLine, $city, $region, $postalCode, $userId);
+                        $encryptedContact = encrypt_data($contact);
+                        $encryptedAddress = encrypt_data($addressLine);
+                        $updateCustomerStmt->bind_param("ssssssi", $fullName, $encryptedContact, $encryptedAddress, $city, $region, $postalCode, $userId);
                         $updateCustomerStmt->execute();
                     } else {
                         $insertCustomerStmt = $conn->prepare("
                             INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         ");
-                        $insertCustomerStmt->bind_param("issssss", $userId, $fullName, $contact, $addressLine, $city, $region, $postalCode);
+                        $encryptedContact = encrypt_data($contact);
+                        $encryptedAddress = encrypt_data($addressLine);
+                        $insertCustomerStmt->bind_param("issssss", $userId, $fullName, $encryptedContact, $encryptedAddress, $city, $region, $postalCode);
                         $insertCustomerStmt->execute();
                     }
                     $conn->commit();
@@ -308,8 +312,8 @@ $profile = $profileStmt->get_result()->fetch_assoc() ?: [];
 $username = (string) ($profile['username'] ?? ($_SESSION['username'] ?? ''));
 $email = (string) ($profile['email'] ?? '');
 $fullName = (string) ($profile['full_name'] ?? '');
-$contactNumber = (string) ($profile['contact_number'] ?? '');
-$addressLine = (string) ($profile['address_line'] ?? '');
+$contactNumber = decrypt_data((string) ($profile['contact_number'] ?? ''));
+$addressLine = decrypt_data((string) ($profile['address_line'] ?? ''));
 $city = (string) ($profile['city'] ?? '');
 $region = (string) ($profile['region'] ?? '');
 $postalCode = (string) ($profile['postal_code'] ?? '');

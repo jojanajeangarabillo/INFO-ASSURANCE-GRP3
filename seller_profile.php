@@ -40,8 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     if (empty($shop_name)) {
         $error = "Shop name is required.";
     } else {
+        $encryptedContact = encrypt_data($contact_number);
         $stmt = $conn->prepare("UPDATE seller SET shop_name = ?, shop_description = ?, shop_address = ?, contact_number = ? WHERE user_id = ?");
-        $stmt->bind_param("ssssi", $shop_name, $shop_description, $shop_address, $contact_number, $user_id);
+        $stmt->bind_param("ssssi", $shop_name, $shop_description, $shop_address, $encryptedContact, $user_id);
         if ($stmt->execute()) {
             $message = "Profile updated successfully!";
         } else {
@@ -66,7 +67,7 @@ $seller_stmt->close();
 $shop_name = $seller['shop_name'] ?? '';
 $shop_description = $seller['shop_description'] ?? '';
 $shop_address = $seller['shop_address'] ?? '';
-$contact_number = $seller['contact_number'] ?? '';
+$contact_number = decrypt_data($seller['contact_number'] ?? '');
 $email = $seller['email'] ?? '';
 ?>
 
