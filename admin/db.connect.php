@@ -20,28 +20,60 @@ try {
 }
 
 // Encryption key - Must be exactly 32 bytes for AES-256-CBC
-define('ENCRYPTION_KEY', 'my_secure_32_byte_key_1234567'); // Exactly 32 bytes
+// Use a proper 32-byte key (you can generate one via: echo bin2hex(random_bytes(32));)
+define('ENCRYPTION_KEY', 'my_secure_32_byte_key_12345678'); // Now exactly 32 bytes (added '8')
 define('ENCRYPTION_METHOD', 'AES-256-CBC');
 
 function encrypt_data($data) {
     if (empty($data)) return $data;
-    $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length(ENCRYPTION_METHOD));
-    $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
-    return base64_encode($iv . $encrypted);
+    try {
+        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length(ENCRYPTION_METHOD));
+        $encrypted = openssl_encrypt($data, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
+        if ($encrypted === false) {
+            error_log("Encryption failed for data: " . substr($data, 0, 100));
+            return $data; // Return original if encryption fails
+        }
+        return base64_encode($iv . $encrypted);
+    } catch (Exception $e) {
+        error_log("Encryption error: " . $e->getMessage());
+        return $data;
+    }
 }
 
 function decrypt_data($encrypted_data) {
     if (empty($encrypted_data)) return $encrypted_data;
-    $data = base64_decode($encrypted_data);
-    $iv_length = openssl_cipher_iv_length(ENCRYPTION_METHOD);
-    if (strlen($data) < $iv_length) {
-        // Not valid encrypted data - return as is (for existing unencrypted data)
+    
+    try {
+        $data = base64_decode($encrypted_data);
+        if ($data === false) {
+            // Not valid base64 - probably plain text
+            return $encrypted_data;
+        }
+        
+        $iv_length = openssl_cipher_iv_length(ENCRYPTION_METHOD);
+        
+        // Check if this looks like encrypted data (has IV + encrypted content)
+        if (strlen($data) < $iv_length) {
+            // Too short to be encrypted data - return as is
+            return $encrypted_data;
+        }
+        
+        $iv = substr($data, 0, $iv_length);
+        $encrypted = substr($data, $iv_length);
+        
+        $decrypted = openssl_decrypt($encrypted, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
+        
+        if ($decrypted === false) {
+            // Decryption failed - might be plain text or old key
+            error_log("Decryption failed for data: " . substr($encrypted_data, 0, 100));
+            return $encrypted_data;
+        }
+        
+        return $decrypted;
+    } catch (Exception $e) {
+        error_log("Decryption error: " . $e->getMessage());
         return $encrypted_data;
     }
-    $iv = substr($data, 0, $iv_length);
-    $encrypted = substr($data, $iv_length);
-    $decrypted = openssl_decrypt($encrypted, ENCRYPTION_METHOD, ENCRYPTION_KEY, OPENSSL_RAW_DATA, $iv);
-    return $decrypted !== false ? $decrypted : $encrypted_data;
 }
 
 function log_audit_action($action, $module, $description = '') {

@@ -22,35 +22,85 @@ if (!isset($_SESSION['last_activity'])) {
 
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
-// Fetch login history
-$loginHistoryStmt = $conn->query("
-    SELECT lh.*, u.username 
-    FROM login_history lh 
-    LEFT JOIN user u ON lh.user_id = u.user_id 
-    ORDER BY lh.login_time DESC 
-    LIMIT 100
-");
-$loginHistory = $loginHistoryStmt->fetch_all(MYSQLI_ASSOC);
+// Get date filters from GET parameters (single date)
+$login_date = isset($_GET['login_date']) ? $_GET['login_date'] : '';
+$audit_date = isset($_GET['audit_date']) ? $_GET['audit_date'] : '';
+$locked_date = isset($_GET['locked_date']) ? $_GET['locked_date'] : '';
 
-// Fetch audit log
-$auditLogStmt = $conn->query("
-    SELECT al.*, u.username 
-    FROM audit_log al 
-    LEFT JOIN user u ON al.user_id = u.user_id 
-    ORDER BY al.created_at DESC 
-    LIMIT 100
-");
-$auditLog = $auditLogStmt->fetch_all(MYSQLI_ASSOC);
+// Fetch login history with date filter
+if (!empty($login_date)) {
+    $loginHistoryStmt = $conn->prepare("
+        SELECT lh.*, u.username 
+        FROM login_history lh 
+        LEFT JOIN user u ON lh.user_id = u.user_id 
+        WHERE DATE(lh.login_time) = ?
+        ORDER BY lh.login_time DESC 
+        LIMIT 100
+    ");
+    $loginHistoryStmt->bind_param("s", $login_date);
+    $loginHistoryStmt->execute();
+    $loginHistory = $loginHistoryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} else {
+    $loginHistoryStmt = $conn->query("
+        SELECT lh.*, u.username 
+        FROM login_history lh 
+        LEFT JOIN user u ON lh.user_id = u.user_id 
+        ORDER BY lh.login_time DESC 
+        LIMIT 100
+    ");
+    $loginHistory = $loginHistoryStmt->fetch_all(MYSQLI_ASSOC);
+}
 
-// Fetch locked accounts
-$lockedAccsStmt = $conn->query("
-    SELECT la.*, u.username 
-    FROM locked_accs la 
-    LEFT JOIN user u ON la.user_id = u.user_id 
-    ORDER BY la.date_time DESC 
-    LIMIT 100
-");
-$lockedAccs = $lockedAccsStmt->fetch_all(MYSQLI_ASSOC);
+// Fetch audit log with date filter
+if (!empty($audit_date)) {
+    $auditLogStmt = $conn->prepare("
+        SELECT al.*, u.username 
+        FROM audit_log al 
+        LEFT JOIN user u ON al.user_id = u.user_id 
+        WHERE DATE(al.created_at) = ?
+        ORDER BY al.created_at DESC 
+        LIMIT 100
+    ");
+    $auditLogStmt->bind_param("s", $audit_date);
+    $auditLogStmt->execute();
+    $auditLog = $auditLogStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} else {
+    $auditLogStmt = $conn->query("
+        SELECT al.*, u.username 
+        FROM audit_log al 
+        LEFT JOIN user u ON al.user_id = u.user_id 
+        ORDER BY al.created_at DESC 
+        LIMIT 100
+    ");
+    $auditLog = $auditLogStmt->fetch_all(MYSQLI_ASSOC);
+}
+
+// Fetch locked accounts with date filter
+if (!empty($locked_date)) {
+    $lockedAccsStmt = $conn->prepare("
+        SELECT la.*, u.username 
+        FROM locked_accs la 
+        LEFT JOIN user u ON la.user_id = u.user_id 
+        WHERE DATE(la.date_time) = ?
+        ORDER BY la.date_time DESC 
+        LIMIT 100
+    ");
+    $lockedAccsStmt->bind_param("s", $locked_date);
+    $lockedAccsStmt->execute();
+    $lockedAccs = $lockedAccsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+} else {
+    $lockedAccsStmt = $conn->query("
+        SELECT la.*, u.username 
+        FROM locked_accs la 
+        LEFT JOIN user u ON la.user_id = u.user_id 
+        ORDER BY la.date_time DESC 
+        LIMIT 100
+    ");
+    $lockedAccs = $lockedAccsStmt->fetch_all(MYSQLI_ASSOC);
+}
+
+// Get current active tab from URL parameter
+$active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'loginHistory';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -126,6 +176,58 @@ body {
   box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
 
+.date-filter {
+  background: #f9f9f9;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.date-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.date-filter-group label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #610C27;
+}
+
+.date-filter-group input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.date-filter button {
+  background: #a61b4a;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.date-filter button:hover {
+  background: #7a1438;
+}
+
+.date-filter .reset-btn {
+  background: #666;
+}
+
+.date-filter .reset-btn:hover {
+  background: #444;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -154,6 +256,19 @@ th {
 .info { background: #dbeafe; color: #1e40af; }
 
 .mb-4 { margin-bottom: 1.5rem; }
+
+.filter-summary {
+  background: #e9ecef;
+  padding: 8px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 13px;
+  color: #495057;
+}
+
+.filter-summary strong {
+  color: #610C27;
+}
 
 @media (max-width: 768px) {
   .container { margin-left: 0; padding: 20px; }
@@ -191,12 +306,58 @@ function toggleSidebar() {
 }
 
 function showTab(tabId) {
+  // Update URL parameter
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', tabId);
+  window.history.pushState({}, '', url);
+  
+  // Show/hide tabs
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.tabs button').forEach(btn => btn.classList.remove('active'));
   
   document.getElementById(tabId).style.display = 'block';
   event.target.classList.add('active');
 }
+
+// Apply filter for a specific tab
+function applyFilter(tabName) {
+  const date = document.getElementById(`${tabName}_date`).value;
+  
+  const url = new URL(window.location.href);
+  if (date) {
+    url.searchParams.set(`${tabName}_date`, date);
+  } else {
+    url.searchParams.delete(`${tabName}_date`);
+  }
+  url.searchParams.set('tab', tabName);
+  window.location.href = url.toString();
+}
+
+// Reset filter for a specific tab
+function resetFilter(tabName) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(`${tabName}_date`);
+  url.searchParams.set('tab', tabName);
+  window.location.href = url.toString();
+}
+
+// Set active tab on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const activeTab = '<?php echo $active_tab; ?>';
+  const tabButtons = document.querySelectorAll('.tabs button');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  tabContents.forEach(content => content.style.display = 'none');
+  tabButtons.forEach(btn => btn.classList.remove('active'));
+  
+  document.getElementById(activeTab).style.display = 'block';
+  // Find and activate the corresponding button
+  tabButtons.forEach(btn => {
+    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(activeTab)) {
+      btn.classList.add('active');
+    }
+  });
+});
 </script>
 
 <div class="container" id="main">
@@ -205,14 +366,29 @@ function showTab(tabId) {
 <p>Monitor all user activities and login events across the platform.</p>
 
 <div class="tabs mb-4">
-  <button class="active" onclick="showTab('loginHistory')">Login History</button>
-  <button onclick="showTab('auditLog')">Action History</button>
-  <button onclick="showTab('lockedAccounts')">Locked Accounts</button>
+  <button class="<?php echo $active_tab === 'loginHistory' ? 'active' : ''; ?>" onclick="showTab('loginHistory')">Login History</button>
+  <button class="<?php echo $active_tab === 'auditLog' ? 'active' : ''; ?>" onclick="showTab('auditLog')">Action History</button>
+  <button class="<?php echo $active_tab === 'lockedAccounts' ? 'active' : ''; ?>" onclick="showTab('lockedAccounts')">Locked Accounts</button>
 </div>
 
 <!-- Login History -->
-<div id="loginHistory" class="tab-content">
+<div id="loginHistory" class="tab-content" style="<?php echo $active_tab === 'loginHistory' ? 'display: block;' : 'display: none;'; ?>">
   <div class="card">
+    <div class="date-filter">
+      <div class="date-filter-group">
+        <label>Filter by Date</label>
+        <input type="date" id="login_date" value="<?php echo htmlspecialchars($login_date); ?>">
+      </div>
+      <button onclick="applyFilter('login')">Apply Filter</button>
+      <button class="reset-btn" onclick="resetFilter('login')">Reset</button>
+    </div>
+    
+    <?php if (!empty($login_date)): ?>
+    <div class="filter-summary">
+      <strong>Showing records for: <?php echo htmlspecialchars($login_date); ?></strong>
+    </div>
+    <?php endif; ?>
+    
     <table>
       <thead>
         <tr>
@@ -224,7 +400,9 @@ function showTab(tabId) {
       </thead>
       <tbody>
         <?php if (empty($loginHistory)): ?>
-          <tr><td colspan="4" style="text-align: center; color: #999;">No login history available.</td></tr>
+          <tr><td colspan="4" style="text-align: center; color: #999;">
+            <?php echo !empty($login_date) ? 'No login history available for ' . htmlspecialchars($login_date) : 'No login history available.'; ?>
+          </td></tr>
         <?php else: ?>
           <?php foreach ($loginHistory as $log): ?>
             <tr>
@@ -245,8 +423,23 @@ function showTab(tabId) {
 </div>
 
 <!-- Audit Log -->
-<div id="auditLog" class="tab-content" style="display: none;">
+<div id="auditLog" class="tab-content" style="<?php echo $active_tab === 'auditLog' ? 'display: block;' : 'display: none;'; ?>">
   <div class="card">
+    <div class="date-filter">
+      <div class="date-filter-group">
+        <label>Filter by Date</label>
+        <input type="date" id="audit_date" value="<?php echo htmlspecialchars($audit_date); ?>">
+      </div>
+      <button onclick="applyFilter('audit')">Apply Filter</button>
+      <button class="reset-btn" onclick="resetFilter('audit')">Reset</button>
+    </div>
+    
+    <?php if (!empty($audit_date)): ?>
+    <div class="filter-summary">
+      <strong>Showing records for: <?php echo htmlspecialchars($audit_date); ?></strong>
+    </div>
+    <?php endif; ?>
+    
     <table>
       <thead>
         <tr>
@@ -254,13 +447,14 @@ function showTab(tabId) {
           <th>Action</th>
           <th>Module</th>
           <th>Description</th>
-          <th>IP Address</th>
           <th>Date & Time</th>
         </tr>
       </thead>
       <tbody>
         <?php if (empty($auditLog)): ?>
-          <tr><td colspan="6" style="text-align: center; color: #999;">No action history available.</td></tr>
+          <tr><td colspan="5" style="text-align: center; color: #999;">
+            <?php echo !empty($audit_date) ? 'No action history available for ' . htmlspecialchars($audit_date) : 'No action history available.'; ?>
+          </td></tr>
         <?php else: ?>
           <?php foreach ($auditLog as $log): ?>
             <tr>
@@ -290,8 +484,23 @@ function showTab(tabId) {
 </div>
 
 <!-- Locked Accounts -->
-<div id="lockedAccounts" class="tab-content" style="display: none;">
+<div id="lockedAccounts" class="tab-content" style="<?php echo $active_tab === 'lockedAccounts' ? 'display: block;' : 'display: none;'; ?>">
   <div class="card">
+    <div class="date-filter">
+      <div class="date-filter-group">
+        <label>Filter by Date</label>
+        <input type="date" id="locked_date" value="<?php echo htmlspecialchars($locked_date); ?>">
+      </div>
+      <button onclick="applyFilter('locked')">Apply Filter</button>
+      <button class="reset-btn" onclick="resetFilter('locked')">Reset</button>
+    </div>
+    
+    <?php if (!empty($locked_date)): ?>
+    <div class="filter-summary">
+      <strong>Showing records for: <?php echo htmlspecialchars($locked_date); ?></strong>
+    </div>
+    <?php endif; ?>
+    
     <table>
       <thead>
         <tr>
@@ -303,7 +512,9 @@ function showTab(tabId) {
       </thead>
       <tbody>
         <?php if (empty($lockedAccs)): ?>
-          <tr><td colspan="4" style="text-align: center; color: #999;">No locked accounts available.</td></tr>
+          <tr><td colspan="4" style="text-align: center; color: #999;">
+            <?php echo !empty($locked_date) ? 'No locked accounts available for ' . htmlspecialchars($locked_date) : 'No locked accounts available.'; ?>
+           </td></tr>
         <?php else: ?>
           <?php foreach ($lockedAccs as $acc): ?>
             <tr>

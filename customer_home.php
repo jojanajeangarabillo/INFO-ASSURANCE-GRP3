@@ -822,10 +822,6 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     </div>
                     <div class="card-body">
                         <h5 class="product-title"><?php echo htmlspecialchars($product['name']); ?></h5>
-                        <div class="rating-wrap">
-                            <span class="rating-value"><i class="bi bi-star-fill me-1"></i><?php echo number_format((float) $product['avg_rating'], 1); ?></span>
-                            <span class="review-count">(<?php echo (int) $product['review_count']; ?> reviews)</span>
-                        </div>
                         <div class="product-price">
                             ₱<?php echo number_format((float) $product['min_price'], 2); ?>
                             <?php if ($product['max_price'] > $product['min_price']): ?>
@@ -870,10 +866,6 @@ $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     </div>
                     <div class="col-md-7">
                         <h3 class="modal-product-title" id="modalProductName">Product Name</h3>
-                        <div class="mb-2">
-                            <span class="rating-value" id="modalRating"><i class="bi bi-star-fill me-1"></i>0.0</span>
-                            <span class="review-count ms-2" id="modalReviewCount">(0 reviews)</span>
-                        </div>
                         <div class="modal-price mb-3" id="modalPrice">₱0.00</div>
                         <div class="mb-3">
                             <p class="text-muted" id="modalDescription">Product description will appear here.</p>
@@ -1226,8 +1218,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('modalProductName').innerText = data.product.name;
                 document.getElementById('modalDescription').innerHTML = escapeHtml(data.product.description || 'No description available.');
                 document.getElementById('modalCategory').innerHTML = data.product.category_gender;
-                document.getElementById('modalRating').innerHTML = '<i class="bi bi-star-fill me-1"></i>' + parseFloat(data.product.avg_rating || 0).toFixed(1);
-                document.getElementById('modalReviewCount').innerText = '(' + (data.product.review_count || 0) + ' reviews)';
                 
                 // Store variants
                 currentVariants = data.variants;

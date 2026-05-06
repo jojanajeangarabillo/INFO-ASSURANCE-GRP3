@@ -1,11 +1,12 @@
 <?php
 session_start();
 require_once 'admin/db.connect.php';
-require_once 'admin/email.helper.php';
 
 $isLoggedIn = isset($_SESSION['user_id']);
-$currentUserId = $isLoggedIn ? (int) $_SESSION['user_id'] : 0;
-$fromProfile = ($_GET['source'] ?? '') === 'profile';
+$currentUserId = $isLoggedIn ? (int)$_SESSION['user_id'] : 0;
+
+$fromProfile = isset($_GET['source']) && $_GET['source'] === 'profile';
+
 $message = '';
 $messageType = '';
 
@@ -14,6 +15,7 @@ if (empty($_SESSION['csrf_token'])) {
 }
 $csrfToken = $_SESSION['csrf_token'];
 
+/* ---------------- FORM STATE ---------------- */
 $form = [
     'full_name' => '',
     'email' => '',
@@ -25,190 +27,165 @@ $form = [
     'shop_address' => '',
 ];
 
-if ($isLoggedIn) {
-    $userPrefillStmt = $conn->prepare("SELECT username, email FROM user WHERE user_id = ? LIMIT 1");
-    $userPrefillStmt->bind_param("i", $currentUserId);
-    $userPrefillStmt->execute();
-    $prefill = $userPrefillStmt->get_result()->fetch_assoc();
-    if ($prefill) {
-        $form['full_name'] = (string) ($prefill['username'] ?? '');
-        $form['email'] = (string) ($prefill['email'] ?? '');
-    }
-}
-
+/* ---------------- UPLOAD ---------------- */
 function save_upload(string $fieldName): array
 {
-    if (!isset($_FILES[$fieldName]) || !is_array($_FILES[$fieldName])) {
-        return ['ok' => false, 'error' => 'Missing upload: ' . $fieldName];
+    if (!isset($_FILES[$fieldName])) {
+        return ['ok' => false, 'error' => 'Missing upload'];
     }
+
     $file = $_FILES[$fieldName];
-    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-        return ['ok' => false, 'error' => 'Upload failed for ' . $fieldName];
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return ['ok' => false, 'error' => 'Upload failed'];
     }
 
     $allowed = ['jpg', 'jpeg', 'png', 'webp'];
-    $original = (string) ($file['name'] ?? '');
-    $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+
     if (!in_array($ext, $allowed, true)) {
-        return ['ok' => false, 'error' => 'Invalid image type for ' . $fieldName];
+        return ['ok' => false, 'error' => 'Invalid file type'];
     }
 
-    if ((int) ($file['size'] ?? 0) > 5 * 1024 * 1024) {
-        return ['ok' => false, 'error' => 'File too large for ' . $fieldName];
+    if ($file['size'] > 5 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'File too large'];
     }
 
-    $dir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'seller_docs';
+    $dir = __DIR__ . '/uploads/seller_docs/';
     if (!is_dir($dir)) {
         mkdir($dir, 0777, true);
     }
 
     $fileName = $fieldName . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-    $targetPath = $dir . DIRECTORY_SEPARATOR . $fileName;
-    if (!move_uploaded_file((string) $file['tmp_name'], $targetPath)) {
-        return ['ok' => false, 'error' => 'Failed to save ' . $fieldName];
+    $fullPath = $dir . $fileName;
+
+    if (!move_uploaded_file($file['tmp_name'], $fullPath)) {
+        return ['ok' => false, 'error' => 'Upload move failed'];
     }
 
     return ['ok' => true, 'path' => 'uploads/seller_docs/' . $fileName];
 }
 
+/* ---------------- POST ---------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    if (!is_string($token) || !hash_equals($_SESSION['csrf_token'], $token)) {
-        $message = 'Invalid form submission. Please try again.';
+
+    if (!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid CSRF token';
         $messageType = 'error';
     } else {
-        $form['full_name'] = trim($_POST['full_name'] ?? '');
-        $form['email'] = trim($_POST['email'] ?? '');
-        $form['contact_number'] = trim($_POST['contact_number'] ?? '');
-        $form['age'] = trim($_POST['age'] ?? '');
-        $form['tin_id'] = trim($_POST['tin_id'] ?? '');
-        $form['business_category'] = trim($_POST['business_category'] ?? '');
-        $form['shop_name'] = trim($_POST['shop_name'] ?? '');
-        $form['shop_address'] = trim($_POST['shop_address'] ?? '');
 
-        $required = [
-            $form['full_name'], $form['email'], $form['contact_number'], $form['age'],
-            $form['tin_id'], $form['business_category'], $form['shop_name'], $form['shop_address']
-        ];
-        $hasEmpty = false;
-        foreach ($required as $value) {
-            if ($value === '') {
-                $hasEmpty = true;
-                break;
-            }
+        foreach ($form as $key => $_) {
+            $form[$key] = trim($_POST[$key] ?? '');
         }
 
-        if ($hasEmpty) {
-            $message = 'All fields are required.';
+        if (in_array('', $form, true)) {
+            $message = 'All fields are required';
             $messageType = 'error';
-        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
-            $message = 'Please provide a valid email.';
-            $messageType = 'error';
-        } elseif (!ctype_digit($form['age']) || (int) $form['age'] < 18) {
-            $message = 'Seller age must be 18 or above.';
-            $messageType = 'error';
-        } elseif (!in_array($form['business_category'], ['Men', 'Women'], true)) {
-            $message = 'Invalid business category selected.';
-            $messageType = 'error';
-        } else {
-            $permitUpload = save_upload('business_permit_picture');
-            $validIdUpload = save_upload('valid_id_picture');
-            $shopUpload = save_upload('shop_image');
 
-            if (!$permitUpload['ok']) {
-                $message = $permitUpload['error'];
+        } elseif (!filter_var($form['email'], FILTER_VALIDATE_EMAIL)) {
+            $message = 'Invalid email';
+            $messageType = 'error';
+
+        } elseif (!ctype_digit($form['age']) || (int)$form['age'] < 18) {
+            $message = 'Age must be 18+';
+            $messageType = 'error';
+
+        } else {
+
+            $permit = save_upload('business_permit_picture');
+            $validId = save_upload('valid_id_picture');
+            $shopImg = save_upload('shop_image');
+
+            if (!$permit['ok']) {
+                $message = $permit['error'];
                 $messageType = 'error';
-            } elseif (!$validIdUpload['ok']) {
-                $message = $validIdUpload['error'];
+
+            } elseif (!$validId['ok']) {
+                $message = $validId['error'];
                 $messageType = 'error';
-            } elseif (!$shopUpload['ok']) {
-                $message = $shopUpload['error'];
+
+            } elseif (!$shopImg['ok']) {
+                $message = $shopImg['error'];
                 $messageType = 'error';
+
             } else {
+
                 try {
                     $conn->begin_transaction();
-                    $targetUserId = 0;
 
-                    if ($isLoggedIn) {
-                        $targetUserId = $currentUserId;
-                    } else {
-                        $existingUserStmt = $conn->prepare("SELECT user_id FROM user WHERE email = ? LIMIT 1");
-                        $existingUserStmt->bind_param("s", $form['email']);
-                        $existingUserStmt->execute();
-                        $existingUser = $existingUserStmt->get_result()->fetch_assoc();
-                        if ($existingUser) {
-                            throw new RuntimeException('An account with this email already exists. Please login first.');
-                        }
+                    /* CREATE USER IF NOT LOGGED IN */
+                    if (!$isLoggedIn) {
 
-                        $baseUsername = preg_replace('/[^a-z0-9]+/i', '', strtolower($form['full_name']));
-                        if ($baseUsername === '') {
-                            $baseUsername = 'seller';
-                        }
-                        $username = $baseUsername;
-                        $counter = 1;
-                        while (true) {
-                            $checkUserStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? LIMIT 1");
-                            $checkUserStmt->bind_param("s", $username);
-                            $checkUserStmt->execute();
-                            if ($checkUserStmt->get_result()->num_rows === 0) {
-                                break;
-                            }
-                            $counter++;
-                            $username = $baseUsername . $counter;
-                        }
+                        $username = strtolower(preg_replace('/[^a-z0-9]/i', '', $form['full_name']));
+                        if ($username === '') $username = 'seller';
 
-                        $temporaryPassword = bin2hex(random_bytes(8)) . 'A1!';
-                        $passwordHash = password_hash($temporaryPassword, PASSWORD_DEFAULT);
-                        // Set role_id to 3 (Seller)
-                        $roleId = 3;
-                        $createUserStmt = $conn->prepare("INSERT INTO user (username, email, password, role_id, is_activated) VALUES (?, ?, ?, ?, 1)");
-                        $createUserStmt->bind_param("sssi", $username, $form['email'], $passwordHash, $roleId);
-                        $createUserStmt->execute();
-                        $targetUserId = (int) $conn->insert_id;
+                        $passwordHash = password_hash(bin2hex(random_bytes(6)), PASSWORD_DEFAULT);
+
+                        $stmt = $conn->prepare("
+                            INSERT INTO user (username, email, password, role_id, is_activated)
+                            VALUES (?, ?, ?, 3, 1)
+                        ");
+
+                        $stmt->bind_param("sss", $username, $form['email'], $passwordHash);
+                        $stmt->execute();
+
+                        $currentUserId = $conn->insert_id;
                     }
 
-                    $sellerExistsStmt = $conn->prepare("SELECT seller_id FROM seller WHERE user_id = ? LIMIT 1");
-                    $sellerExistsStmt->bind_param("i", $targetUserId);
-                    $sellerExistsStmt->execute();
-                    if ($sellerExistsStmt->get_result()->num_rows > 0) {
-                        throw new RuntimeException('Seller registration already exists for this account.');
+                    /* CHECK DUPLICATE SELLER */
+                    $check = $conn->prepare("SELECT seller_id FROM seller WHERE user_id=?");
+                    $check->bind_param("i", $currentUserId);
+                    $check->execute();
+
+                    if ($check->get_result()->num_rows > 0) {
+                        throw new Exception("Seller already exists");
                     }
 
-                    // Store full name and other metadata in shop_description JSON field
-                    $metadata = [
-                        'full_name' => $form['full_name'],
-                        'email' => $form['email'],
-                        'age' => (int) $form['age'],
-                        'tin_id' => $form['tin_id'],
-                        'business_category' => $form['business_category'],
-                        'business_permit_picture' => $permitUpload['path'],
-                        'valid_id_picture' => $validIdUpload['path'],
-                        'shop_image' => $shopUpload['path'],
-                        'registration_date' => date('Y-m-d H:i:s')
-                    ];
-                    $shopDescription = json_encode($metadata);
+                    /* SIMPLE INTRO ONLY */
+                    $shopDescription = "Welcome to " . $form['shop_name'] . "!";
 
-                    // Insert into seller table with full_name column
-                    $insertSellerStmt = $conn->prepare("
-                        INSERT INTO seller (user_id, full_name, shop_name, shop_description, shop_address, contact_number, is_approved)
-                        VALUES (?, ?, ?, ?, ?, ?, 0)
-                    ");
                     $encryptedContact = encrypt_data($form['contact_number']);
-                    $insertSellerStmt->bind_param("isssss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $form['shop_address'], $encryptedContact);
-                    $insertSellerStmt->execute();
 
-                    // Ensure role is set to Seller (3)
-                    $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = 3 WHERE user_id = ?");
-                    $updateRoleStmt->bind_param("i", $targetUserId);
-                    $updateRoleStmt->execute();
+                    /* INSERT SELLER */
+                    $stmt = $conn->prepare("
+                        INSERT INTO seller (
+                            user_id,
+                            full_name,
+                            shop_name,
+                            shop_description,
+                            business_category,
+                            tin_id,
+                            age,
+                            shop_address,
+                            contact_number,
+                            business_permit,
+                            valid_id,
+                            shop_image,
+                            is_approved
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    ");
 
-                    if ($isLoggedIn) {
-                        $_SESSION['role_id'] = 3;
-                    }
+                    $stmt->bind_param(
+                        "isssssisssss",
+                        $currentUserId,
+                        $form['full_name'],
+                        $form['shop_name'],
+                        $shopDescription,
+                        $form['business_category'],
+                        $form['tin_id'],
+                        $form['age'],
+                        $form['shop_address'],
+                        $encryptedContact,
+                        $permit['path'],
+                        $validId['path'],
+                        $shopImg['path']
+                    );
+
+                    $stmt->execute();
 
                     $conn->commit();
-                    
-                    // Clear form fields after successful registration
+
+                    /* CLEAR FORM AFTER SUCCESS */
                     $form = [
                         'full_name' => '',
                         'email' => '',
@@ -219,19 +196,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'shop_name' => '',
                         'shop_address' => '',
                     ];
-                    
-                    $message = 'Seller registration submitted successfully. Please wait for admin approval.';
-                    $messageType = 'success';
+
+                    $message = "Registration successful. Wait for approval.";
+                    $messageType = "success";
+
                 } catch (Throwable $e) {
-                    $conn->rollback();
+
+                    // SAFE rollback (prevents crash)
+                    if ($conn && $conn->ping()) {
+                        $conn->rollback();
+                    }
+
                     $message = $e->getMessage();
-                    $messageType = 'error';
+                    $messageType = "error";
                 }
             }
         }
     }
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>

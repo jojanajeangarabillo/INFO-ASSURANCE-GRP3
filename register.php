@@ -6,21 +6,35 @@ require 'admin/db.connect.php';
 $stmt = $conn->prepare("SELECT * FROM system_settings LIMIT 1");
 $stmt->execute();
 $result = $stmt->get_result();
-$settings = $result->num_rows > 0 ? $result->fetch_assoc() : [
-  'max_login_attempts' => 3,
-  'password_min_length' => 12,
-  'require_uppercase' => 1,
-  'require_lowercase' => 1,
-  'require_number' => 1,
-  'require_special_char' => 1
-];
+
+if ($result->num_rows > 0) {
+    $settings = $result->fetch_assoc();
+    
+    // Ensure all required keys exist with defaults
+    $settings = array_merge([
+        'max_login_attempts' => 3,
+        'password_min_length' => 12,
+        'require_uppercase' => 1,
+        'require_lowercase' => 1,
+        'require_number' => 1,
+        'require_special_char' => 1
+    ], $settings);
+} else {
+    $settings = [
+        'max_login_attempts' => 3,
+        'password_min_length' => 12,
+        'require_uppercase' => 1,
+        'require_lowercase' => 1,
+        'require_number' => 1,
+        'require_special_char' => 1
+    ];
+}
 
 $password_min_length = $settings['password_min_length'];
 $require_uppercase = $settings['require_uppercase'];
 $require_lowercase = $settings['require_lowercase'];
 $require_number = $settings['require_number'];
 $require_special_char = $settings['require_special_char'];
-
 
 
 // Build password pattern
