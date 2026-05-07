@@ -19,17 +19,14 @@ $timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
-// Calculate timeout in milliseconds for client-side auto-logout
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
 /* =========================
@@ -45,7 +42,6 @@ if (isset($_POST['action']) && isset($_POST['user_id'])) {
     $target_user_id = (int)$_POST['user_id'];
     $action = $_POST['action'];
 
-    // Get max attempts from system settings
     $settingsStmt = $conn->query("SELECT max_login_attempts FROM system_settings LIMIT 1");
     $settings = $settingsStmt->fetch_assoc();
     $max_attempts = $settings['max_login_attempts'] ?? 3;
@@ -61,7 +57,6 @@ if (isset($_POST['action']) && isset($_POST['user_id'])) {
     if (isset($stmt)) {
         $stmt->execute();
         
-        // Fetch username for audit log
         $userStmt = $conn->prepare("SELECT username FROM user WHERE user_id = ?");
         $userStmt->bind_param("i", $target_user_id);
         $userStmt->execute();
@@ -87,15 +82,12 @@ if (isset($_POST['add_logistic'])) {
     
     $username = trim($_POST['username']);
     $email = trim($_POST['email']);
-    $role_id = 5; // Logistic Role
 
-    // Validate inputs
     if (empty($username) || empty($email)) {
         header("Location: admin_users.php?error=empty_fields");
         exit;
     }
 
-    // Check if username or email already exists
     $checkStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? OR email = ?");
     $checkStmt->bind_param("ss", $username, $email);
     $checkStmt->execute();
@@ -104,16 +96,12 @@ if (isset($_POST['add_logistic'])) {
         exit;
     }
 
-    // Generate temporary password
     $tempPassword = bin2hex(random_bytes(6));
     $passwordHash = password_hash($tempPassword, PASSWORD_DEFAULT);
 
-    // Provide values for NOT NULL columns that don't have defaults
     $empty = '';
     $empty_expiry = '0000-00-00 00:00:00';
-    $zero = 0;
 
-    // Insert new user
     $insertStmt = $conn->prepare("
         INSERT INTO user (
             username, email, password, role_id, is_activated, is_active,
@@ -126,7 +114,6 @@ if (isset($_POST['add_logistic'])) {
     );
     
     if ($insertStmt->execute()) {
-        // Send email
         $subject = "Welcome to J3RS Logistics Team!";
         $body = "
             <html>
@@ -136,27 +123,17 @@ if (isset($_POST['add_logistic'])) {
                     .container { padding: 20px; background-color: #fdf2f6; }
                     .content { background-color: white; padding: 20px; border-radius: 10px; }
                     .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
-                    .credentials { background-color: #f9dbe5; padding: 15px; border-radius: 8px; margin: 20px 0; }
                     .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
-                    .warning { color: #dc2626; font-size: 14px; margin-top: 10px; }
                 </style>
             </head>
             <body>
                 <div class='container'>
                     <div class='content'>
-                        <div class='header'>Logistic Partner Account Created</div>
+                        <div class='header'>Welcome to J3RS Logistics Team!</div>
                         <p>Dear " . htmlspecialchars($username) . ",</p>
                         <p>Your account as a Logistic Partner has been created by the administrator.</p>
-                        
-                        <div class='credentials'>
-                            <p><strong>Login Credentials:</strong></p>
-                            <p><strong>Username:</strong> " . htmlspecialchars($username) . "<br>
-                            <strong>Temporary Password:</strong> " . htmlspecialchars($tempPassword) . "</p>
-                            <p class='warning'><strong>Important:</strong> Please login and change your password immediately.</p>
-                        </div>
-                        
+                        <p>You can now log in to your account using your registered credentials.</p>
                         <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
-                        
                         <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
                     </div>
                 </div>
@@ -165,17 +142,14 @@ if (isset($_POST['add_logistic'])) {
         ";
         $emailSent = send_email($email, $subject, $body);
 
-        // Log audit action
         log_audit_action('create', 'Logistic Partners', "Admin created logistic partner account for user: $username");
-        //        
+        
         if ($emailSent) {
             header("Location: admin_users.php?msg=logistic_success");
         } else {
-            // User was created but email failed
             header("Location: admin_users.php?msg=logistic_created_email_failed");
         }
     } else {
-        // Log error for debugging
         error_log("Database error: " . $insertStmt->error);
         header("Location: admin_users.php?error=failed");
     }
@@ -183,14 +157,13 @@ if (isset($_POST['add_logistic'])) {
 }
 
 /* =========================
-   HANDLE APPROVE / REJECT (from admin_approvals.php)
+   HANDLE APPROVE / REJECT
 ========================= */
 if (isset($_GET['seller_action'], $_GET['id'])) {
     $sellerId = (int) $_GET['id'];
     $action = $_GET['seller_action'];
 
     if ($action === 'approve') {
-        // Get seller details before approving
         $sellerStmt = $conn->prepare("
             SELECT s.*, u.user_id, u.username, u.email, u.role_id, 
                    (SELECT COUNT(*) FROM customer WHERE user_id = u.user_id) as has_customer
@@ -206,42 +179,27 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
             $currentRoleId = (int) $seller['role_id'];
             $hasCustomerRecord = (int) $seller['has_customer'] > 0;
             
-            // Determine the new role based on user type
             $newRole = null;
             $roleType = '';
             
             if ($hasCustomerRecord || $currentRoleId == 2) {
-                // User has customer record OR is currently a customer - Upgrade to Dual Role (4)
                 $newRole = 4;
                 $roleType = 'Dual (Customer & Seller)';
             } else {
-                // Pure seller registration - Keep as Seller Only (3)
                 $newRole = 3;
                 $roleType = 'Seller Only';
             }
             
-            // Update approval status
             $stmt = $conn->prepare("UPDATE seller SET is_approved = 1 WHERE seller_id = ?");
             $stmt->bind_param("i", $sellerId);
             $stmt->execute();
             
-            // Update role if needed
             if ($newRole && $currentRoleId != $newRole) {
                 $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = ? WHERE user_id = ?");
                 $updateRoleStmt->bind_param("ii", $newRole, $seller['user_id']);
                 $updateRoleStmt->execute();
             }
             
-            // Generate temporary password
-            $tempPassword = bin2hex(random_bytes(6));
-            $passwordHash = password_hash($tempPassword, PASSWORD_DEFAULT);
-            
-            // Update user password and ensure account is activated
-            $updatePassStmt = $conn->prepare("UPDATE user SET password = ?, is_activated = 1, is_locked = 0, attempts = 0 WHERE user_id = ?");
-            $updatePassStmt->bind_param("si", $passwordHash, $seller['user_id']);
-            $updatePassStmt->execute();
-
-            // Update username if needed (for pure seller registration)
             if (!$hasCustomerRecord && $currentRoleId == 0) {
                 $newUsername = preg_replace('/[^a-z0-9]/i', '_', strtolower($seller['shop_name']));
                 $checkUserStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? AND user_id != ? LIMIT 1");
@@ -254,7 +212,6 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
                 }
             }
             
-            // Create customer record if needed (for pure seller registration)
             if (!$hasCustomerRecord) {
                 $insertCustomerStmt = $conn->prepare("
                     INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
@@ -266,18 +223,15 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
                 $insertCustomerStmt->execute();
             }
             
-            // Send Email
             if ($roleType == 'Dual (Customer & Seller)') {
-                $emailBody = getDualRoleEmail($seller, $tempPassword, $roleType);
+                $emailBody = getDualRoleEmail($seller);
             } else {
-                $emailBody = getSellerOnlyEmail($seller, $tempPassword, $roleType);
+                $emailBody = getSellerOnlyEmail($seller);
             }
-            send_email($seller['email'], "Your Seller Account Has Been Approved!", $emailBody);
+            send_email($seller['email'], "Your Seller Application Has Been Approved!", $emailBody);
             
-            // Log audit action
             log_audit_action('approve', 'Seller Applications', "Admin approved seller application for shop: " . $seller['shop_name']);
             
-            // Create notification
             $notifStmt = $conn->prepare("INSERT INTO notification (user_id, title, message, is_read, created_at) VALUES (?, ?, ?, 0, NOW())");
             if ($roleType == 'Dual (Customer & Seller)') {
                 $notifTitle = "Seller Application Approved - Account Upgraded to Dual Role";
@@ -297,7 +251,6 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
     }
 
     if ($action === 'reject') {
-        // Get seller details before rejecting
         $sellerStmt = $conn->prepare("
             SELECT s.*, u.user_id, u.username, u.email, u.role_id 
             FROM seller s 
@@ -309,12 +262,10 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
         $seller = $sellerStmt->get_result()->fetch_assoc();
         
         if ($seller) {
-            // Send rejection email
             $subject = "Seller Application Update - J3RS Marketplace";
             $body = getRejectionEmail($seller);
             send_email($seller['email'], $subject, $body);
             
-            // Create notification for rejection
             $notifStmt = $conn->prepare("
                 INSERT INTO notification (user_id, title, message, is_read, created_at) 
                 VALUES (?, ?, ?, 0, NOW())
@@ -324,10 +275,8 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
             $notifStmt->bind_param("iss", $seller['user_id'], $notifTitle, $notifMessage);
             $notifStmt->execute();
             
-            // Log audit action
             log_audit_action('reject', 'Seller Applications', "Admin rejected seller application for shop: " . $seller['shop_name']);
             
-            // Delete seller record
             $stmt = $conn->prepare("DELETE FROM seller WHERE seller_id = ?");
             $stmt->bind_param("i", $sellerId);
             $stmt->execute();
@@ -356,10 +305,11 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
     $seller = $stmt->get_result()->fetch_assoc();
     
     if ($seller) {
-        $metadata = json_decode($seller['shop_description'], true);
+        $decryptedContact = decrypt_data($seller['contact_number']);
+        $decryptedTinId = decrypt_data($seller['tin_id']);
+        
         $hasCustomer = (int) $seller['has_customer'] > 0;
         
-        // Determine application type
         if ($hasCustomer || $seller['role_id'] == 2) {
             $applicationType = "Customer Upgrading to Dual Role";
             $willBecome = "Dual Role (Customer + Seller) - Role ID: 4";
@@ -370,14 +320,22 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
         
         echo json_encode([
             'success' => true,
-            'full_name' => $seller['full_name'] ?? ($metadata['full_name'] ?? $seller['username']),
+            'full_name' => $seller['full_name'] ?? $seller['username'],
             'email' => $seller['email'],
-            'contact_number' => decrypt_data($seller['contact_number']),
+            'contact_number' => $decryptedContact,
+            'age' => $seller['age'],
+            'tin_id' => $decryptedTinId,
             'shop_name' => $seller['shop_name'],
             'shop_address' => $seller['shop_address'],
+            'shop_description' => $seller['shop_description'],
+            'business_category' => $seller['business_category'],
+            'additional_info' => $seller['additional_info'],
+            'business_permit' => $seller['business_permit'],
+            'valid_id' => $seller['valid_id'],
+            'shop_image' => $seller['shop_image'],
             'application_type' => $applicationType,
             'will_become' => $willBecome,
-            'metadata' => $metadata
+            'created_at' => $seller['created_at']
         ]);
     } else {
         echo json_encode(['success' => false, 'message' => 'Seller not found']);
@@ -385,8 +343,8 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
     exit;
 }
 
-// Helper functions for emails (copied from admin_approvals.php)
-function getDualRoleEmail($seller, $tempPassword, $roleType) {
+// Email helper functions
+function getDualRoleEmail($seller) {
     return "
         <html>
         <head>
@@ -395,10 +353,8 @@ function getDualRoleEmail($seller, $tempPassword, $roleType) {
                 .container { padding: 20px; background-color: #fdf2f6; }
                 .content { background-color: white; padding: 20px; border-radius: 10px; }
                 .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
-                .credentials { background-color: #f9dbe5; padding: 15px; border-radius: 8px; margin: 20px 0; }
                 .upgrade-badge { background-color: #10b981; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; font-size: 12px; margin-left: 10px; }
                 .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
-                .warning { color: #dc2626; font-size: 14px; margin-top: 10px; }
                 .feature-list { margin: 15px 0; padding-left: 20px; }
                 .feature-list li { margin: 8px 0; }
             </style>
@@ -407,19 +363,14 @@ function getDualRoleEmail($seller, $tempPassword, $roleType) {
             <div class='container'>
                 <div class='content'>
                     <div class='header'>
-                        Welcome to J3RS Marketplace! 
+                        Seller Application Approved! 
                         <span class='upgrade-badge'>Role Upgraded to Dual</span>
                     </div>
                     <p>Dear " . htmlspecialchars($seller['shop_name']) . ",</p>
                     <p>Congratulations! Your seller application has been approved by our admin team.</p>
                     
-                    <div class='credentials'>
-                        <p><strong>Your Account Has Been Upgraded!</strong></p>
-                        <p>✅ Your account has been upgraded from <strong>Customer</strong> to <strong>Dual Role</strong> (Customer + Seller)</p>
-                        <p><strong>Login Credentials:</strong></p>
-                        <p><strong>Username:</strong> " . htmlspecialchars($seller['username']) . "<br>
-                        <strong>Temporary Password:</strong> " . htmlspecialchars($tempPassword) . "</p>
-                        <p class='warning'><strong>Important:</strong> Please login and change your password immediately.</p>
+                    <div style='background:#dcfce7; padding:15px; border-radius:8px; margin:15px 0;'>
+                        <p style='margin:0;'><strong>✅ Your account has been upgraded from Customer to Dual Role (Customer + Seller)</strong></p>
                     </div>
                     
                     <p><strong>What's New with Your Dual Role Account:</strong></p>
@@ -430,6 +381,7 @@ function getDualRoleEmail($seller, $tempPassword, $roleType) {
                         <li>🛍️ <strong>Continue Shopping:</strong> Shop as a customer too</li>
                     </ul>
                     
+                    <p>You can now log in to your account and start selling!</p>
                     <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
                     
                     <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
@@ -440,7 +392,7 @@ function getDualRoleEmail($seller, $tempPassword, $roleType) {
     ";
 }
 
-function getSellerOnlyEmail($seller, $tempPassword, $roleType) {
+function getSellerOnlyEmail($seller) {
     return "
         <html>
         <head>
@@ -449,27 +401,22 @@ function getSellerOnlyEmail($seller, $tempPassword, $roleType) {
                 .container { padding: 20px; background-color: #fdf2f6; }
                 .content { background-color: white; padding: 20px; border-radius: 10px; }
                 .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
-                .credentials { background-color: #f9dbe5; padding: 15px; border-radius: 8px; margin: 20px 0; }
                 .seller-badge { background-color: #f59e0b; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; font-size: 12px; margin-left: 10px; }
                 .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
-                .warning { color: #dc2626; font-size: 14px; margin-top: 10px; }
             </style>
         </head>
         <body>
             <div class='container'>
                 <div class='content'>
                     <div class='header'>
-                        Welcome to J3RS Marketplace!
+                        Seller Application Approved!
                         <span class='seller-badge'>Seller Account</span>
                     </div>
                     <p>Dear " . htmlspecialchars($seller['shop_name']) . ",</p>
                     <p>Congratulations! Your seller application has been approved by our admin team.</p>
                     
-                    <div class='credentials'>
-                        <p><strong>Your Seller Account Credentials:</strong></p>
-                        <p><strong>Username:</strong> " . htmlspecialchars($seller['username']) . "<br>
-                        <strong>Temporary Password:</strong> " . htmlspecialchars($tempPassword) . "</p>
-                        <p class='warning'><strong>Important:</strong> Please login and change your password immediately.</p>
+                    <div style='background:#dcfce7; padding:15px; border-radius:8px; margin:15px 0;'>
+                        <p style='margin:0;'><strong>✅ Your seller account has been successfully created!</strong></p>
                     </div>
                     
                     <p><strong>What You Can Do Now:</strong></p>
@@ -479,7 +426,8 @@ function getSellerOnlyEmail($seller, $tempPassword, $roleType) {
                         <li>📊 <strong>Track Analytics:</strong> Monitor your sales performance</li>
                     </ul>
                     
-                    <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Seller Account</a></p>
+                    <p>You can now log in to your seller account and start selling!</p>
+                    <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
                     
                     <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
                 </div>
@@ -499,6 +447,7 @@ function getRejectionEmail($seller) {
                 .content { background-color: white; padding: 20px; border-radius: 10px; }
                 .header { color: #dc2626; font-size: 24px; margin-bottom: 20px; }
                 .message-box { background-color: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; }
+                .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
             </style>
         </head>
         <body>
@@ -511,7 +460,9 @@ function getRejectionEmail($seller) {
                         <p>After careful review, we regret to inform you that your seller application has not been approved at this time.</p>
                         <p>You may reapply after ensuring all requirements are properly met.</p>
                     </div>
-                    <p>Best regards,<br>J3RS Marketplace Team</p>
+                    <p>If you have any questions, please contact our support team.</p>
+                    <p><a href='http://localhost/INFO-ASSURANCE-GRP3/contact.php' class='button'>Contact Support</a></p>
+                    <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
                 </div>
             </div>
         </body>
@@ -520,7 +471,7 @@ function getRejectionEmail($seller) {
 }
 
 /* =========================
-   FETCH DATA
+   FETCH DATA - FIXED PENDING SELLERS QUERY
 ========================= */
 // Fetch All Users
 $usersStmt = $conn->query("
@@ -529,18 +480,36 @@ $usersStmt = $conn->query("
     JOIN role r ON u.role_id = r.role_id
     ORDER BY u.user_id DESC
 ");
+
+if (!$usersStmt) {
+    die("Error fetching users: " . $conn->error);
+}
 $users = $usersStmt->fetch_all(MYSQLI_ASSOC);
 
-// Fetch Pending Sellers (with has_customer check)
-$pendingStmt = $conn->query("
+// Fetch Pending Sellers - FIXED: Added error checking and proper JOIN
+$pendingQuery = "
     SELECT s.*, u.username, u.email, u.role_id,
            (SELECT COUNT(*) FROM customer WHERE user_id = u.user_id) as has_customer
     FROM seller s
     JOIN user u ON s.user_id = u.user_id
-    WHERE s.is_approved = 0
+    WHERE s.is_approved = 0 OR s.is_approved IS NULL
     ORDER BY s.created_at DESC
-");
+";
+
+$pendingStmt = $conn->query($pendingQuery);
+
+if (!$pendingStmt) {
+    // If query fails, show error for debugging
+    die("Error fetching pending sellers: " . $conn->error);
+}
+
 $pendingSellers = $pendingStmt->fetch_all(MYSQLI_ASSOC);
+
+// Debug: Check if there are any pending sellers
+if (empty($pendingSellers)) {
+    // You can uncomment this line to debug
+    // error_log("No pending sellers found. Check if seller table has records with is_approved = 0");
+}
 
 // Fetch Roles for filter
 $rolesStmt = $conn->query("SELECT role_name FROM role");
@@ -592,7 +561,6 @@ body {
   margin-left: 70px;
 }
 
-/* title */
 .page-title {
   font-size: 32px;
   font-weight: bold;
@@ -600,7 +568,6 @@ body {
   margin-bottom: 5px;
 }
 
-/* tabs */
 .tabs button {
   padding: 10px;
   border: none;
@@ -614,7 +581,6 @@ body {
   font-weight: bold;
 }
 
-/* card */
 .card {
   background: white;
   padding: 15px;
@@ -623,7 +589,6 @@ body {
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
-/* table */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -639,7 +604,6 @@ th {
   color: #610C27;
 }
 
-/* badges */
 .badge {
   padding: 4px 10px;
   border-radius: 20px;
@@ -659,7 +623,6 @@ th {
 .badge-upgrade { background: #dcfce7; color: #166534; }
 .badge-pure { background: #fef3c7; color: #92400e; }
 
-/* buttons */
 .btn {
   padding: 6px 12px;
   border-radius: 6px;
@@ -673,7 +636,6 @@ th {
 .btn-approve { background: #610C27; color: white; border: none; }
 .btn-reject { background: #fee2e2; color: #991b1b; border: none; }
 
-/* Modal */
 .modal {
     display: none;
     position: fixed;
@@ -697,13 +659,11 @@ th {
     margin: 5% auto;
     padding: 0;
     border-radius: 16px;
-    width: 600px;
+    width: 650px;
     position: relative;
     max-height: 85vh;
     overflow-y: auto;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    transform: translateY(0);
-    transition: transform 0.3s ease;
 }
 
 .confirm-modal .modal-content {
@@ -773,21 +733,6 @@ th {
     border-bottom: 2px solid #f9dbe5;
 }
 
-.image-preview {
-    max-width: 100%;
-    height: auto;
-    margin: 12px 0;
-    border-radius: 12px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    cursor: pointer;
-    transition: transform 0.2s;
-}
-
-.image-preview:hover {
-    transform: scale(1.02);
-}
-
 .info-box {
     background: #eff6ff;
     border-left: 4px solid #3b82f6;
@@ -836,13 +781,42 @@ th {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
 }
+
+.document-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.document-card {
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    border: 1px solid #e5e7eb;
+}
+
+.document-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+.document-card p {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 0;
+}
 </style>
 </head>
 
 <body>
 
 <?php $current_page = basename($_SERVER['PHP_SELF']); ?>
-<!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
@@ -870,16 +844,14 @@ function toggleSidebar() {
 }
 </script>
 
-<!-- MAIN -->
 <div class="container" id="main">
 
 <h1 class="page-title">User Management</h1>
 <p>Manage all platform users, roles, and permissions.</p>
 
-<!-- TABS -->
 <div class="tabs mb-4">
   <button class="active" onclick="showTab('users')">All Users</button>
-  <button onclick="showTab('pending')">Pending Sellers</button>
+  <button onclick="showTab('pending')">Pending Sellers <?php echo count($pendingSellers) > 0 ? '<span style="background:#dc2626; color:white; padding:2px 8px; border-radius:12px; margin-left:5px; font-size:12px;">'.count($pendingSellers).'</span>' : ''; ?></button>
 </div>
 
 <!-- USERS TAB -->
@@ -911,7 +883,6 @@ function toggleSidebar() {
   <th>Actions</th>
 </tr>
 </thead>
-
 <tbody>
 <?php foreach ($users as $u): ?>
 <tr class="user-row" data-role="<?php echo htmlspecialchars($u['role_name']); ?>">
@@ -943,7 +914,7 @@ function toggleSidebar() {
 
 </div>
 
-<!-- PENDING TAB (logic from admin_approvals.php) -->
+<!-- PENDING TAB -->
 <div id="pending" class="tab-content" style="display:none;">
 
 <div class="card">
@@ -960,12 +931,11 @@ function toggleSidebar() {
 </thead>
 <tbody>
 <?php if (empty($pendingSellers)): ?>
-    <tr><td colspan="6" style="text-align:center;">No pending seller applications.</td></tr>
+    <tr><td colspan="6" style="text-align:center; padding:40px;">No pending seller applications.</td></tr>
 <?php else: ?>
     <?php foreach ($pendingSellers as $s): 
-        $meta = json_decode($s['shop_description'], true);
-        $hasCustomer = (int) $s['has_customer'] > 0;
-        $isUpgrade = ($hasCustomer || $s['role_id'] == 2);
+        $hasCustomer = (int) ($s['has_customer'] ?? 0);
+        $isUpgrade = ($hasCustomer || ($s['role_id'] ?? 0) == 2);
         
         if ($isUpgrade) {
             $appType = "Customer Upgrade";
@@ -978,10 +948,10 @@ function toggleSidebar() {
         }
     ?>
     <tr>
-      <td><?php echo htmlspecialchars($s['full_name'] ?? ($meta['full_name'] ?? $s['username'])); ?></td>
-      <td><?php echo htmlspecialchars($s['shop_name']); ?></td>
+      <td><?php echo htmlspecialchars($s['full_name'] ?? $s['username'] ?? 'N/A'); ?></td>
+      <td><?php echo htmlspecialchars($s['shop_name'] ?? 'N/A'); ?></td>
       <td><span class="application-badge <?php echo $appBadge; ?>"><?php echo $appType; ?></span></td>
-      <td><?php echo $s['role_id'] == 2 ? 'Customer' : 'New'; ?></td>
+      <td><?php echo ($s['role_id'] ?? 0) == 2 ? 'Customer' : 'New'; ?></td>
       <td><strong><?php echo $willBecome; ?></strong></td>
       <td>
         <button class="btn btn-view" onclick="openSellerView(<?php echo $s['seller_id']; ?>)">
@@ -1005,7 +975,7 @@ function toggleSidebar() {
 
 </div>
 
-<!-- Confirmation Modal (Lock/Unlock) -->
+<!-- Modals (same as before) -->
 <div id="confirmModal" class="modal confirm-modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -1033,9 +1003,8 @@ function toggleSidebar() {
     </div>
 </div>
 
-<!-- Seller View Modal -->
 <div id="sellerViewModal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="width: 750px;">
         <div class="modal-header">
             <h2><i class="fas fa-store"></i> Seller Application Details</h2>
             <span class="close-btn" onclick="closeModal('sellerViewModal')">&times;</span>
@@ -1047,7 +1016,6 @@ function toggleSidebar() {
     </div>
 </div>
 
-<!-- Seller Approve Modal -->
 <div id="sellerApproveModal" class="modal confirm-modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -1064,7 +1032,6 @@ function toggleSidebar() {
     </div>
 </div>
 
-<!-- Seller Reject Modal -->
 <div id="sellerRejectModal" class="modal confirm-modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -1087,7 +1054,6 @@ function toggleSidebar() {
     </div>
 </div>
 
-<!-- Add Logistic Partner Modal -->
 <div id="addLogisticModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -1106,7 +1072,7 @@ function toggleSidebar() {
                     <input type="email" name="email" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
                 </div>
                 <p style="color: #666; font-size: 0.85rem; background: #f9f9f9; padding: 10px; border-radius: 5px;">
-                    <i class="fas fa-info-circle"></i> A temporary password will be generated and sent to the email provided. The account will be pre-activated.
+                    <i class="fas fa-info-circle"></i> A confirmation email will be sent to the provided email address.
                 </p>
             </div>
             <div class="modal-footer">
@@ -1117,20 +1083,13 @@ function toggleSidebar() {
     </div>
 </div>
 
-<!-- SCRIPTS -->
 <script>
 function openModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = 'block';
-    }
+    document.getElementById(modalId).style.display = 'block';
 }
 
 function closeModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    document.getElementById(modalId).style.display = 'none';
 }
 
 let currentSellerId = null;
@@ -1162,7 +1121,6 @@ function filterUsers() {
     });
 }
 
-// User Lock/Unlock Modal
 function confirmAction(action, userId, username) {
     const modalTitle = document.getElementById('modalTitle');
     const modalText = document.getElementById('modalText');
@@ -1193,56 +1151,88 @@ function confirmAction(action, userId, username) {
     document.getElementById('confirmModal').style.display = 'block';
 }
 
-// Seller Management (logic from admin_approvals.php)
 function openSellerView(sellerId) {
-    document.getElementById('sellerModalBody').innerHTML = '<div style="text-align:center; padding:20px; color:#610C27;">Loading...</div>';
+    document.getElementById('sellerModalBody').innerHTML = '<div style="text-align:center; padding:20px; color:#610C27;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
     document.getElementById('sellerViewModal').style.display = 'block';
     
     fetch(`admin_users.php?get_seller_details=1&id=${sellerId}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                const meta = data.metadata;
                 let html = `
                     <div class="info-box" style="margin-top: 0;">
-                        <strong>Application Type:</strong> ${data.application_type}<br>
-                        <strong>Will become:</strong> ${data.will_become}
+                        <strong><i class="fas fa-info-circle"></i> Application Type:</strong> ${escapeHtml(data.application_type)}<br>
+                        <strong><i class="fas fa-exchange-alt"></i> Will become:</strong> ${escapeHtml(data.will_become)}<br>
+                        <strong><i class="far fa-calendar-alt"></i> Submitted:</strong> ${escapeHtml(data.created_at)}
                     </div>
                     
-                    <div class="section-title">Personal Information</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <p><strong>Name:</strong><br>${escapeHtml(data.full_name)}</p>
-                        <p><strong>Email:</strong><br>${escapeHtml(data.email)}</p>
-                        <p><strong>Contact:</strong><br>${escapeHtml(data.contact_number)}</p>
-                        <p><strong>Age:</strong><br>${escapeHtml(meta.age || 'N/A')}</p>
+                    <div class="section-title">
+                        <i class="fas fa-user-circle"></i> Personal Information
                     </div>
-                    <p><strong>TIN ID:</strong> ${escapeHtml(meta.tin_id || 'N/A')}</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f9fafb; padding: 15px; border-radius: 12px;">
+                        <div><strong>Full Name:</strong><br>${escapeHtml(data.full_name)}</div>
+                        <div><strong>Email Address:</strong><br>${escapeHtml(data.email)}</div>
+                        <div><strong>Contact Number:</strong><br>${escapeHtml(data.contact_number)}</div>
+                        <div><strong>Age:</strong><br>${escapeHtml(data.age)} years old</div>
+                        <div><strong>TIN ID:</strong><br>${escapeHtml(data.tin_id)}</div>
+                    </div>
                     
-                    <div class="section-title">Business Information</div>
-                    <p><strong>Shop Name:</strong> ${escapeHtml(data.shop_name)}</p>
-                    <p><strong>Shop Address:</strong> ${escapeHtml(data.shop_address)}</p>
-                    <p><strong>Category:</strong> ${escapeHtml(meta.business_category || 'N/A')}</p>
-                    
-                    <div class="section-title">Documents</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
+                    <div class="section-title">
+                        <i class="fas fa-store"></i> Business Information
+                    </div>
+                    <div style="background: #f9fafb; padding: 15px; border-radius: 12px;">
+                        <div style="margin-bottom: 12px;"><strong>Shop Name:</strong><br>${escapeHtml(data.shop_name)}</div>
+                        <div style="margin-bottom: 12px;"><strong>Business Category:</strong><br>${escapeHtml(data.business_category)}</div>
+                        <div style="margin-bottom: 12px;"><strong>Shop Address:</strong><br>${escapeHtml(data.shop_address)}</div>
                 `;
                 
-                if (meta.business_permit_picture) {
-                    html += `<div><strong>Business Permit:</strong><br><img src="${escapeHtml(meta.business_permit_picture)}" class="image-preview" onclick="window.open(this.src)"></div>`;
+                if (data.shop_description) {
+                    html += `<div style="margin-bottom: 12px;"><strong>Shop Description:</strong><br>${escapeHtml(data.shop_description)}</div>`;
                 }
-                if (meta.valid_id_picture) {
-                    html += `<div><strong>Valid ID:</strong><br><img src="${escapeHtml(meta.valid_id_picture)}" class="image-preview" onclick="window.open(this.src)"></div>`;
+                
+                if (data.additional_info) {
+                    html += `<div style="margin-bottom: 12px;"><strong>Additional Information:</strong><br>${escapeHtml(data.additional_info)}</div>`;
                 }
-                if (meta.shop_image) {
-                    html += `<div><strong>Shop Image:</strong><br><img src="${escapeHtml(meta.shop_image)}" class="image-preview" onclick="window.open(this.src)"></div>`;
+                
+                html += `</div>`;
+                
+                html += `<div class="section-title"><i class="fas fa-file-alt"></i> Supporting Documents</div>`;
+                html += `<div class="document-grid">`;
+                
+                if (data.business_permit) {
+                    html += `
+                        <div class="document-card">
+                            <img src="${escapeHtml(data.business_permit)}" onclick="window.open(this.src)" alt="Business Permit">
+                            <p><i class="fas fa-certificate"></i> Business Permit</p>
+                        </div>
+                    `;
+                }
+                if (data.valid_id) {
+                    html += `
+                        <div class="document-card">
+                            <img src="${escapeHtml(data.valid_id)}" onclick="window.open(this.src)" alt="Valid ID">
+                            <p><i class="fas fa-id-card"></i> Valid ID</p>
+                        </div>
+                    `;
+                }
+                if (data.shop_image) {
+                    html += `
+                        <div class="document-card">
+                            <img src="${escapeHtml(data.shop_image)}" onclick="window.open(this.src)" alt="Shop Image">
+                            <p><i class="fas fa-image"></i> Shop Image/Logo</p>
+                        </div>
+                    `;
                 }
                 
                 html += `</div>`;
                 
                 document.getElementById('sellerModalBody').innerHTML = html;
             } else {
-                document.getElementById('sellerModalBody').innerHTML = `<div style="text-align:center; padding:40px; color:#991b1b;">Error: ${escapeHtml(data.message)}</div>`;
+                document.getElementById('sellerModalBody').innerHTML = `<div style="text-align:center; padding:40px; color:#991b1b;"><i class="fas fa-exclamation-triangle"></i> Error: ${escapeHtml(data.message)}</div>`;
             }
+        })
+        .catch(error => {
+            document.getElementById('sellerModalBody').innerHTML = `<div style="text-align:center; padding:40px; color:#991b1b;"><i class="fas fa-exclamation-triangle"></i> Failed to load seller details.</div>`;
         });
 }
 
@@ -1260,10 +1250,11 @@ function showSellerApproveConfirm(sellerId) {
                     </div>
                     <div style="text-align: center; margin-bottom: 25px;">
                         <h3 style="font-size: 20px; margin-bottom: 10px; color: #333;">Approve Seller Application?</h3>
+                        <p><strong>Shop:</strong> ${escapeHtml(data.shop_name)}</p>
                         <p><strong>${data.application_type}</strong></p>
                         <p>This seller will become: <strong>${data.will_become}</strong></p>
                         <div style="background:#dbeafe; border-left:4px solid #3b82f6; padding:12px; margin-top:15px; border-radius:8px; text-align:left;">
-                            <i class="fas fa-info-circle"></i> An email will be sent to the seller with their credentials.
+                            <i class="fas fa-info-circle"></i> A confirmation email will be sent to the seller.
                         </div>
                     </div>
                 `;
@@ -1321,15 +1312,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function closeModal(id) {
-    document.getElementById(id).style.display = 'none';
-}
-
 window.onclick = function(e) {
     if (e.target.classList.contains('modal')) e.target.style.display = 'none';
 }
 
-// Handle messages from URL
 window.onload = function() {
     const urlParams = new URLSearchParams(window.location.search);
     const msg = urlParams.get('msg');

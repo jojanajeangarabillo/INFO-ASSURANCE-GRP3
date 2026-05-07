@@ -22,6 +22,8 @@ $form = [
     'tin_id' => '',
     'business_category' => '',
     'shop_name' => '',
+    'shop_address' => '',
+    'additional_info' => '',
 ];
 
 if ($isLoggedIn) {
@@ -116,10 +118,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form['tin_id'] = trim($_POST['tin_id'] ?? '');
         $form['business_category'] = trim($_POST['business_category'] ?? '');
         $form['shop_name'] = trim($_POST['shop_name'] ?? '');
+        $form['shop_address'] = trim($_POST['shop_address'] ?? '');
+        $form['additional_info'] = trim($_POST['additional_info'] ?? '');
 
         $required = [
             $form['full_name'], $form['email'], $form['contact_number'], $form['age'],
-            $form['tin_id'], $form['business_category'], $form['shop_name']
+            $form['tin_id'], $form['business_category'], $form['shop_name'], $form['shop_address']
         ];
         $hasEmpty = false;
         foreach ($required as $value) {
@@ -195,48 +199,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $insertCustomerStmt->execute();
                     }
 
-                    // Store seller application data (role remains 2/Customer until approved)
-                    $metadata = [
-                        'full_name' => $form['full_name'],
-                        'email' => $form['email'],
-                        'age' => (int) $form['age'],
-                        'tin_id' => $form['tin_id'],
-                        'business_category' => $form['business_category'],
-                        'business_permit_picture' => $permitUpload['path'],
-                        'valid_id_picture' => $validIdUpload['path'],
-                        'shop_image' => $shopUpload['path'],
-                        'registration_date' => date('Y-m-d H:i:s'),
-                        'application_type' => 'customer_upgrade'
-                    ];
-                    $shopDescription = json_encode($metadata);
-
-                    // FIXED: Added full_name to the INSERT statement
-                    $insertSellerStmt = $conn->prepare("
-                        INSERT INTO seller (user_id, full_name, shop_name, shop_description, contact_number, is_approved)
-                        VALUES (?, ?, ?, ?, ?, 0)
-                    ");
+                    // Insert seller data with ALL fields mapped correctly
                     $encryptedSellerContact = encrypt_data($form['contact_number']);
-                    $insertSellerStmt->bind_param("issss", $targetUserId, $form['full_name'], $form['shop_name'], $shopDescription, $encryptedSellerContact);
-                    $insertSellerStmt->execute();
+                    $encryptedTinId = encrypt_data($form['tin_id']);
+                    $shopDescription = $form['additional_info'] ?? '';
+                    
+                    $insertSellerStmt = $conn->prepare("
+                        INSERT INTO seller (
+                            user_id, full_name, shop_name, shop_description, business_category, 
+                            tin_id, age, additional_info, shop_address, contact_number, 
+                            business_permit, valid_id, shop_image, is_approved
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    ");
+                    
+                    $insertSellerStmt->bind_param(
+                        "isssssissssss", 
+                        $targetUserId,           // user_id
+                        $form['full_name'],       // full_name
+                        $form['shop_name'],       // shop_name
+                        $shopDescription,         // shop_description
+                        $form['business_category'], // business_category
+                        $encryptedTinId,          // tin_id (encrypted)
+                        $form['age'],             // age
+                        $form['additional_info'], // additional_info
+                        $form['shop_address'],    // shop_address
+                        $encryptedSellerContact,  // contact_number (encrypted)
+                        $permitUpload['path'],    // business_permit
+                        $validIdUpload['path'],   // valid_id
+                        $shopUpload['path']       // shop_image
+                    );
+                    
+                    if (!$insertSellerStmt->execute()) {
+                        throw new RuntimeException('Failed to insert seller data: ' . $insertSellerStmt->error);
+                    }
+                    $insertSellerStmt->close();
 
                     // Send notification email to admin
                     $adminEmails = ['admin@j3rs.com'];
                     $subject = "New Seller Application - Customer Upgrade Request";
+                    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+                    $approvalLink = $protocol . "://" . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/\\') . "/admin/admin_approvals.php";
+                    
                     $body = "
+                        <!DOCTYPE html>
                         <html>
-                        <head><style>body{font-family:Arial,sans-serif}</style></head>
-                        <body>
-                            <h2>New Customer to Seller Upgrade Request</h2>
+                        <head>
+                            <meta charset='UTF-8'>
+                            <title>New Seller Application</title>
+                        </head>
+                        <body style='font-family: Arial, sans-serif;'>
+                            <h2 style='color: #610C27;'>New Customer to Seller Upgrade Request</h2>
                             <p>A customer has applied to become a seller and is waiting for approval:</p>
-                            <p><strong>Full Name:</strong> " . htmlspecialchars($form['full_name']) . "<br>
-                            <strong>Shop Name:</strong> " . htmlspecialchars($form['shop_name']) . "<br>
-                            <strong>Email:</strong> " . htmlspecialchars($form['email']) . "<br>
-                            <strong>Contact:</strong> " . htmlspecialchars($form['contact_number']) . "</p>
+                            <table style='border-collapse: collapse; width: 100%;'>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Full Name:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['full_name']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Shop Name:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['shop_name']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Email:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['email']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Contact:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['contact_number']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Age:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['age']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Business Category:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['business_category']) . "</td></tr>
+                                <tr><td style='padding: 8px; background: #f5f5f5;'><strong>Shop Address:</strong></td><td style='padding: 8px;'>" . htmlspecialchars($form['shop_address']) . "</td></tr>
+                            </table>
                             <p><strong>Application Type:</strong> Customer Upgrading to Dual Role</p>
                             <p><strong>Will Become:</strong> Dual Role (Customer + Seller) (Role ID: 4)</p>
                             <p>Please review the application in the admin panel.</p>
                             <hr>
-                            <p><a href='http://localhost/INFO-ASSURANCE-GRP3/admin/admin_approvals.php'>View Pending Approvals</a></p>
+                            <p><a href='" . $approvalLink . "' style='background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>View Pending Approvals</a></p>
                         </body>
                         </html>
                     ";
@@ -255,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } catch (Throwable $e) {
                     $conn->rollback();
-                    $message = $e->getMessage();
+                    $message = 'Error: ' . $e->getMessage();
                     $messageType = 'error';
                 }
             }
@@ -269,6 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8">
   <title>Become a Seller - J3RS</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script>
     tailwind.config = {
       theme: {
@@ -295,8 +323,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
 
       <?php if ($message !== ''): ?>
-        <div class="mb-4 p-4 rounded-lg text-sm font-medium <?php echo $messageType === 'success' ? 'bg-green-100 text-green-700 border-l-4 border-green-500' : 'bg-red-100 text-red-700 border-l-4 border-red-500'; ?>">
-          <i class="fas <?php echo $messageType === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?> mr-2"></i>
+        <div class="mb-4 p-4 rounded-lg text-sm font-medium <?php echo $messageType === 'success' ? 'bg-green-100 text-green-700 border-l-4 border-green-500' : ($messageType === 'warning' ? 'bg-yellow-100 text-yellow-700 border-l-4 border-yellow-500' : 'bg-red-100 text-red-700 border-l-4 border-red-500'); ?>">
+          <i class="fas <?php echo $messageType === 'success' ? 'fa-check-circle' : ($messageType === 'warning' ? 'fa-exclamation-triangle' : 'fa-exclamation-circle'); ?> mr-2"></i>
           <?php echo htmlspecialchars($message); ?>
         </div>
       <?php endif; ?>
@@ -347,6 +375,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input type="text" name="shop_name" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" value="<?php echo htmlspecialchars($form['shop_name']); ?>" required>
             </div>
 
+            <div>
+              <label class="block mb-1 font-medium text-gray-700">Shop Address *</label>
+              <textarea name="shop_address" rows="2" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" required><?php echo htmlspecialchars($form['shop_address']); ?></textarea>
+            </div>
+
+            <div>
+              <label class="block mb-1 font-medium text-gray-700">Additional Information (Optional)</label>
+              <textarea name="additional_info" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent" placeholder="Tell us more about your business, products, or any other relevant information..."><?php echo htmlspecialchars($form['additional_info']); ?></textarea>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label class="block mb-1 font-medium text-gray-700">Business Permit Picture *</label>
@@ -386,7 +424,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
     </div>
   </div>
-  
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/js/all.min.js"></script>
 </body>
 </html>
