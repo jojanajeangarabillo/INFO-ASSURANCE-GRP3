@@ -4,6 +4,11 @@ require_roles([1]);
 require_once 'admin/db.connect.php';
 require_once 'admin/email.helper.php';
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 // Fetch session timeout from database
 $query = "SELECT session_timeout_minutes FROM system_settings LIMIT 1";
 $result = mysqli_query($conn, $query);
@@ -31,6 +36,12 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
    HANDLE LOCK/UNLOCK ACTIONS
 ========================= */
 if (isset($_POST['action']) && isset($_POST['user_id'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        header("Location: admin_users.php");
+        exit;
+    }
+    
     $target_user_id = (int)$_POST['user_id'];
     $action = $_POST['action'];
 
@@ -58,6 +69,12 @@ if (isset($_POST['action']) && isset($_POST['user_id'])) {
    HANDLE ADD LOGISTIC PARTNER
 ========================= */
 if (isset($_POST['add_logistic'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        header("Location: admin_users.php");
+        exit;
+    }
+    
     $username = trim($_POST['username']);
     $email = trim($_POST['email']);
     $role_id = 5; // Logistic Role
@@ -985,6 +1002,7 @@ function toggleSidebar() {
                 <p style="color: #6b7280; font-size: 0.875rem;">This action will take effect immediately.</p>
             </div>
             <form id="confirmForm" method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                 <input type="hidden" name="user_id" id="modalUserId">
                 <input type="hidden" name="action" id="modalAction">
                 <div class="confirm-buttons">
@@ -1058,6 +1076,7 @@ function toggleSidebar() {
             <span class="close-btn" onclick="closeModal('addLogisticModal')">&times;</span>
         </div>
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
             <div class="modal-body">
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; margin-bottom: 5px; font-weight: bold;">Username</label>

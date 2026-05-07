@@ -2,6 +2,11 @@
 session_start();
 require 'admin/db.connect.php';
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 // Load system settings
 $stmt = $conn->prepare("SELECT * FROM system_settings LIMIT 1");
 $stmt->execute();
@@ -16,6 +21,13 @@ $settings = $result->num_rows > 0 ? $result->fetch_assoc() : [
 ];
 
 if (isset($_POST['login'])) {
+  $token = $_POST['csrf_token'] ?? '';
+  if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+    $_SESSION['error_message'] = 'Invalid form submission';
+    header("Location: login.php");
+    exit;
+  }
+
   $username = trim($_POST['username'] ?? '');
   $password = $_POST['password'] ?? '';
 
@@ -176,6 +188,7 @@ if (isset($_POST['login'])) {
       <div class="p-8 shadow-xl rounded-2xl bg-white border border-gray-100">
 
         <form action="login.php" method="POST" class="space-y-5">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
           <div>
             <label class="block text-sm font-semibold mb-1 text-gray-700">Username</label>

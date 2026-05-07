@@ -1,6 +1,11 @@
 <?php
 require_once 'auth.php';
 require_roles([1]);
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
 require_once 'admin/db.connect.php';
 require_once 'admin/email.helper.php';
 

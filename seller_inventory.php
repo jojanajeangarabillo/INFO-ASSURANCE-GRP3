@@ -3,6 +3,12 @@ require_once 'auth.php';
 require_roles([3, 4]);
 require_once 'admin/db.connect.php';
 
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 $user_id = $_SESSION['user_id'] ?? 0;
 
 // Fetch session timeout from database
@@ -45,6 +51,10 @@ $error = '';
 
 // Handle Restock Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restock_submit'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        $error = 'Invalid form submission';
+    } else {
     $variant_id = (int) ($_POST['variant_id'] ?? 0);
     $quantity = (int) ($_POST['quantity'] ?? 0);
     $notes = trim($_POST['notes'] ?? '');
@@ -95,9 +105,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['restock_submit'])) {
         $verify_stmt->close();
     }
 }
+}
 
 // Handle Stock Adjustment (Increase/Decrease)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adjust_stock'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        $error = 'Invalid form submission';
+    } else {
     $variant_id = (int) ($_POST['variant_id'] ?? 0);
     $adjustment = (int) ($_POST['adjustment'] ?? 0);
     $reason = trim($_POST['reason'] ?? '');
@@ -155,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['adjust_stock'])) {
         }
         $verify_stmt->close();
     }
+  }
 }
 
 // Fetch all variants with their current stock

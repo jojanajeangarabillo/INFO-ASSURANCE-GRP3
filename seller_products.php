@@ -1,6 +1,12 @@
 <?php
 require_once 'auth.php';
 require_roles([3, 4]);
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 require_once 'admin/db.connect.php';
 
 $user_id = $_SESSION['user_id'] ?? 0;
@@ -46,6 +52,11 @@ $error = '';
 
 // Handle Product Addition with Variants
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_product'])) {
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        $error = 'Invalid form submission';
+    } else {
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $category = $_POST['category'] ?? 'Men';
@@ -115,10 +126,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_product'])) {
             $error = "Failed to add product: " . $e->getMessage();
         }
     }
+  }
 }
 
 // Handle Single Variant Addition - Adds ONLY to product_variant table
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_variant'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        $error = 'Invalid form submission';
+    } else {
     $product_id = (int)($_POST['product_id'] ?? 0);
     $size = trim($_POST['size'] ?? '');
     $color = trim($_POST['color'] ?? '');
@@ -173,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_variant'])) {
             $error = "Please fill in all variant fields correctly.";
         }
     }
+    }
 }
 
 // Handle Variant Deletion
@@ -211,6 +228,10 @@ if (isset($_GET['delete_variant'])) {
 
 // Handle Variant Edit
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_variant'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        $error = 'Invalid form submission';
+    } else {
     $variant_id = (int)($_POST['variant_id'] ?? 0);
     $size = trim($_POST['size'] ?? '');
     $color = trim($_POST['color'] ?? '');
@@ -277,7 +298,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_variant'])) {
             $error = "Please fill in all fields correctly.";
         }
     }
-}
+}    }
+
 
 // Pagination and Filtering
 $search = trim($_GET['search'] ?? '');

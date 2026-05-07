@@ -4,6 +4,11 @@ require_roles([5]); // Only logistics role can access
 
 require_once __DIR__ . '/admin/db.connect.php';
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 $user_id = $_SESSION['user_id'] ?? 0;
 
 // Fetch session timeout from database
@@ -31,6 +36,12 @@ $timeout_ms = $timeout_minutes * 60 * 1000;
 
 // Handle bulk status updates
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+        header("Location: logi_orders.php");
+        exit;
+    }
+    
     if (isset($_POST['bulk_action']) && isset($_POST['selected_orders'])) {
         $action = $_POST['bulk_action'];
         $selected_orders = $_POST['selected_orders'];

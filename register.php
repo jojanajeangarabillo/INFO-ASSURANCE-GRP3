@@ -2,6 +2,11 @@
 session_start();
 require 'admin/db.connect.php';
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
 // Load system settings
 $stmt = $conn->prepare("SELECT * FROM system_settings LIMIT 1");
 $stmt->execute();
@@ -51,11 +56,15 @@ $password_pattern .= '.{' . $password_min_length . ',}$/';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-  $username = trim($_POST['username'] ?? '');
-  $email = trim($_POST['email'] ?? '');
-  $password = $_POST['password'] ?? '';
-  $confirm_password = $_POST['confirm_password'] ?? '';
-  $captcha = trim($_POST['captcha'] ?? '');
+  $token = $_POST['csrf_token'] ?? '';
+  if (!is_string($token) || !hash_equals($csrfToken, $token)) {
+    $error = 'Invalid form submission';
+  } else {
+    $username = trim($_POST['username'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
+    $captcha = trim($_POST['captcha'] ?? '');
 
   // Validate captcha
   if (!isset($_SESSION['captcha_text']) || $captcha !== $_SESSION['captcha_text']) {
@@ -125,6 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $stmt->close();
   }
   $conn->close();
+  }
 }
 
 ?>
@@ -206,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
       <div class="p-8 bg-white rounded-2xl shadow-xl">
 
         <form method="POST" class="space-y-5">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
           <!-- USERNAME -->
           <div>
