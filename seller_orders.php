@@ -16,13 +16,11 @@ $timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
@@ -89,33 +87,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_logistics'])) 
         
         $logistic_name = trim($logistic['full_name']) ?: $logistic['username'];
         
-        // Check if a record already exists for this order
-        $check_stmt = $conn->prepare("SELECT delivery_tracking_id FROM delivery_tracking WHERE order_id = ?");
-        $check_stmt->bind_param("i", $order_id);
-        $check_stmt->execute();
-        $existing = $check_stmt->get_result()->fetch_assoc();
-        $check_stmt->close();
+        // First, delete any existing delivery tracking for this order to avoid duplicates
+        $delete_stmt = $conn->prepare("DELETE FROM delivery_tracking WHERE order_id = ?");
+        $delete_stmt->bind_param("i", $order_id);
+        $delete_stmt->execute();
+        $delete_stmt->close();
         
-        if ($existing) {
-            // Update existing record
-            $update_tracking = $conn->prepare("
-                UPDATE delivery_tracking 
-                SET logistic_user_id = ?, status = 'pending_pickup' 
-                WHERE order_id = ?
-            ");
-            $update_tracking->bind_param("ii", $logistic_user_id, $order_id);
-            $insert_success = $update_tracking->execute();
-            $update_tracking->close();
-        } else {
-            // Insert new record
-            $insert_tracking = $conn->prepare("
-                INSERT INTO delivery_tracking (order_id, status, logistic_user_id, created_at) 
-                VALUES (?, 'pending_pickup', ?, NOW())
-            ");
-            $insert_tracking->bind_param("ii", $order_id, $logistic_user_id);
-            $insert_success = $insert_tracking->execute();
-            $insert_tracking->close();
-        }
+        // Insert new delivery tracking record
+        $insert_tracking = $conn->prepare("
+            INSERT INTO delivery_tracking (order_id, status, logistic_user_id, created_at) 
+            VALUES (?, 'pending_pickup', ?, NOW())
+        ");
+        $insert_tracking->bind_param("ii", $order_id, $logistic_user_id);
+        $insert_success = $insert_tracking->execute();
+        $insert_tracking->close();
         
         if ($insert_success) {
             // Update order status to 'processing' when logistics is assigned
@@ -148,28 +133,29 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
 $orders = [];
 
-// Updated query to only show orders that belong to the current seller
-// and calculate the correct total for this seller's portion of the order
+// Query to show assigned logistics partner
 $orders_query = "
     SELECT o.order_id, o.order_number, o.order_status,
            o.created_at, o.customer_id, u.username as customer_name, u.role_id as customer_role,
            SUM(oi.line_total) as total_amount,
-           dt.status as tracking_status, dt.created_at as tracking_date,
+           dt.delivery_tracking_id,
+           dt.status as tracking_status, 
+           dt.created_at as tracking_date,
            dt.logistic_user_id,
-           CONCAT(COALESCE(logistic_user.first_name, ''), ' ', COALESCE(logistic_user.last_name, '')) as logistic_name
+           logistic_user.user_id as logistic_user_id_check,
+           CONCAT(COALESCE(logistic_user.first_name, ''), ' ', COALESCE(logistic_user.last_name, '')) as logistic_name,
+           logistic_user.username as logistic_username,
+           d.driver_id, d.vehicle_assigned, d.license_plate,
+           CONCAT(COALESCE(driver_user.first_name, ''), ' ', COALESCE(driver_user.last_name, '')) as driver_name,
+           da.status as driver_status
     FROM orders o
     INNER JOIN order_item oi ON o.order_id = oi.order_id AND oi.seller_id = ?
     INNER JOIN user u ON o.customer_id = u.user_id
-    LEFT JOIN (
-        SELECT order_id, status, created_at, logistic_user_id
-        FROM delivery_tracking dt1
-        WHERE delivery_tracking_id = (
-            SELECT MAX(delivery_tracking_id)
-            FROM delivery_tracking dt2
-            WHERE dt2.order_id = dt1.order_id
-        )
-    ) dt ON o.order_id = dt.order_id
-    LEFT JOIN user logistic_user ON dt.logistic_user_id = logistic_user.user_id AND logistic_user.role_id = 5
+    LEFT JOIN delivery_tracking dt ON o.order_id = dt.order_id
+    LEFT JOIN user logistic_user ON dt.logistic_user_id = logistic_user.user_id
+    LEFT JOIN driver_assignment da ON o.order_id = da.order_id AND da.status != 'cancelled'
+    LEFT JOIN driver d ON da.driver_id = d.driver_id
+    LEFT JOIN user driver_user ON d.user_id = driver_user.user_id
     WHERE 1=1
 ";
 
@@ -204,12 +190,20 @@ if ($orders_stmt) {
     error_log("SQL Error: " . $conn->error);
 }
 
-// Fetch logistic users (role_id = 5)
+// FIXED: Fetch logistic users (role_id = 5) for dropdown - includes users with NULL names
 $logistic_stmt = $conn->prepare("
     SELECT u.user_id, u.username, 
-           CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as full_name
+           CASE 
+               WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+               THEN CONCAT(u.first_name, ' ', u.last_name)
+               WHEN u.first_name IS NOT NULL 
+               THEN u.first_name
+               WHEN u.last_name IS NOT NULL 
+               THEN u.last_name
+               ELSE u.username
+           END as display_name
     FROM user u
-    WHERE u.role_id = 5
+    WHERE u.role_id = 5 AND u.is_active = 1
     ORDER BY u.username
 ");
 $logistic_stmt->execute();
@@ -222,6 +216,7 @@ function getOrderStatusBadge($status) {
         'pending' => '<span class="badge-status pending">Pending</span>',
         'processing' => '<span class="badge-status transit">Processing</span>',
         'shipped' => '<span class="badge-status transit">Shipped</span>',
+        'out_for_delivery' => '<span class="badge-status transit">Out for Delivery</span>',
         'delivered' => '<span class="badge-status delivered">Delivered</span>',
         'cancelled' => '<span class="badge-status" style="background:#fde8e8; color:#dc2626;">Cancelled</span>',
         'returned' => '<span class="badge-status" style="background:#f3f4f6; color:#374151;">Returned</span>'
@@ -270,7 +265,6 @@ body {
   margin: 0;
 }
 
-/* SIDEBAR */
 .sidebar {
   width: 240px;
   position: fixed;
@@ -283,7 +277,6 @@ body {
   width: 70px;
 }
 
-/* MAIN CONTENT (MATCH DASHBOARD) */
 .main-content {
   margin-left: 240px;
   transition: 0.3s;
@@ -294,7 +287,6 @@ body {
   margin-left: 70px;
 }
 
-/* CARD STYLE */
 .container-box {
   background: #fff;
   border-radius: 16px;
@@ -303,7 +295,6 @@ body {
   padding: 20px;
 }
 
-/* THEME */
 :root {
   --brand: #6d0f1b;
 }
@@ -318,7 +309,6 @@ body {
   color: white;
 }
 
-/* TABS */
 .tabs {
   display: flex;
   gap: 50px;
@@ -345,7 +335,6 @@ body {
   color: var(--brand) !important;
 }
 
-/* BADGES */
 .badge-status {
   font-size: 12px;
   padding: 4px 10px;
@@ -357,7 +346,6 @@ body {
 .transit { background:#e0ecff; color:#0d6efd; }
 .delivered { background:#d1e7dd; color:#198754; }
 
-/* BUTTON */
 .btn-outline {
   border: 1px solid #ddd;
   border-radius: 10px;
@@ -370,14 +358,13 @@ body {
   color: var(--brand);
 }
 
-/* TABLE */
 .table th {
   font-size: 12px;
   color: gray;
 }
 
 .assign-form {
-  min-width: 200px;
+  min-width: 220px;
 }
 
 .alert-custom {
@@ -394,6 +381,24 @@ body {
   margin-left: 5px;
 }
 
+.badge-driver {
+  background-color: #0ea5e9;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 5px;
+}
+
+.badge-logistics {
+  background-color: #8b5cf6;
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 5px;
+}
+
 .info-banner {
     background-color: #e7f3ff;
     border-left: 4px solid #0d6efd;
@@ -401,46 +406,63 @@ body {
     border-radius: 8px;
     margin-bottom: 20px;
 }
+
+.driver-info {
+    font-size: 12px;
+    color: #0ea5e9;
+    margin-top: 5px;
+}
+
+.logistics-info {
+    font-size: 12px;
+    color: #8b5cf6;
+    margin-top: 5px;
+}
+
+.assigned-badge {
+    background-color: #d1fae5;
+    color: #059669;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+}
 </style>
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
-
   <div class="sidebar-header">
     <div class="toggle-btn" onclick="toggleSidebar()">☰</div>
     <div class="logo-text">Seller</div>
   </div>
 
-    <a href="seller_dashboard.php"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
-    <a href="seller_products.php"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
-    <a href="seller_orders.php" class="active"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
-    <a href="seller_inventory.php"><i class="bi bi-box"></i><span class="text">Inventory</span></a>
-    <a href="seller_profile.php"><i class="bi bi-shop"></i><span class="text">Profile</span></a>
+  <a href="seller_dashboard.php"><i class="bi bi-speedometer2"></i><span class="text">Dashboard</span></a>
+  <a href="seller_products.php"><i class="bi bi-box-seam"></i><span class="text">Products</span></a>
+  <a href="seller_orders.php" class="active"><i class="bi bi-bag"></i><span class="text">Orders</span></a>
+  <a href="seller_inventory.php"><i class="bi bi-box"></i><span class="text">Inventory</span></a>
+  <a href="seller_profile.php"><i class="bi bi-shop"></i><span class="text">Profile</span></a>
     
   <a href="logout.php" class="logout">
     <i class="bi bi-box-arrow-right"></i>
     <span class="text">Logout</span>
   </a>
-
 </div>
 
-<!-- MAIN CONTENT -->
 <div class="main-content" id="main">
 
 <div class="container-fluid">
 
 <h3 class="fw-bold">Delivery Management</h3>
-<p class="text-muted">Manage order fulfillment and assign logistics personnel (Role 5).</p>
+<p class="text-muted">Manage order fulfillment, assign logistics personnel, and track driver assignments.</p>
 
 <div class="info-banner">
     <i class="bi bi-shop"></i> <strong>Seller ID:</strong> <?php echo $seller_id; ?> | 
     <i class="bi bi-box-seam"></i> <strong>Showing orders that contain products from your store only</strong>
 </div>
 
-<!-- Success/Error Messages -->
 <?php if (isset($success_message)): ?>
     <div class="alert alert-success alert-custom alert-dismissible fade show" role="alert">
         <i class="bi bi-check-circle-fill me-2"></i> <?php echo htmlspecialchars($success_message); ?>
@@ -455,10 +477,9 @@ body {
     </div>
 <?php endif; ?>
 
-<!-- TABS -->
 <div class="tabs mb-3">
   <a href="?status=All" class="text-decoration-none <?php echo $status_filter === 'All' || $status_filter === '' ? 'active' : ''; ?>">All</a>
-  <a href="?status=pending" class="text-decoration-none <?php echo $status_filter === 'pending' ? 'active' : ''; ?>">Pending Pickup</a>
+  <a href="?status=pending" class="text-decoration-none <?php echo $status_filter === 'pending' ? 'active' : ''; ?>">Pending</a>
   <a href="?status=processing" class="text-decoration-none <?php echo $status_filter === 'processing' ? 'active' : ''; ?>">Processing</a>
   <a href="?status=shipped" class="text-decoration-none <?php echo $status_filter === 'shipped' ? 'active' : ''; ?>">In Transit</a>
   <a href="?status=delivered" class="text-decoration-none <?php echo $status_filter === 'delivered' ? 'active' : ''; ?>">Delivered</a>
@@ -466,7 +487,6 @@ body {
 
 <hr>
 
-<!-- SEARCH -->
 <div class="container-box mb-4">
   <form action="" method="GET" class="d-flex gap-2">
     <?php if (!empty($status_filter) && $status_filter !== 'All'): ?>
@@ -480,7 +500,6 @@ body {
   </form>
 </div>
 
-<!-- TABLE -->
 <div class="container-box">
 <div class="table-responsive">
 <table class="table align-middle">
@@ -489,21 +508,21 @@ body {
 <tr>
   <th>ORDER ID</th>
   <th>CUSTOMER</th>
-  <th>ASSIGN LOGISTICS (Role 5)</th>
+  <th>ASSIGN LOGISTICS</th>
   <th>ASSIGNED LOGISTIC</th>
+  <th>ASSIGNED DRIVER</th>
   <th>STATUS</th>
   <th>TOTAL (Your Share)</th>
   <th>DATES</th>
   <th>ACTION</th>
-</tr>
 </thead>
 
 <tbody>
 <?php if (empty($orders)): ?>
-  <tr><td colspan="8" class="text-center text-muted p-4">No orders found for your store.</td></tr>
+  <tr><td colspan="9" class="text-center text-muted p-4">No orders found for your store.<?php echo $seller_id; ?></td></tr>
 <?php else: ?>
   <?php foreach ($orders as $order): ?>
-  <tr>
+  <td>
     <td><strong><?php echo htmlspecialchars($order['order_number']); ?></strong></td>
     <td>
       <?php echo htmlspecialchars($order['customer_name']); ?>
@@ -516,11 +535,11 @@ body {
         <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
         <div class="d-flex gap-2 align-items-center">
           <select name="logistic_user_id" class="form-select form-select-sm" style="min-width: 200px;" required>
-            <option value="">Select Logistics Personnel</option>
+            <option value="">-- Select Logistics Personnel --</option>
             <?php foreach ($logistic_users as $logistic): ?>
               <option value="<?php echo $logistic['user_id']; ?>" 
                 <?php echo (!empty($order['logistic_user_id']) && $order['logistic_user_id'] == $logistic['user_id']) ? 'selected' : ''; ?>>
-                <?php echo htmlspecialchars($logistic['full_name'] ?: $logistic['username']); ?> (<?php echo htmlspecialchars($logistic['username']); ?>)
+                <?php echo htmlspecialchars($logistic['display_name']); ?> (ID: <?php echo $logistic['user_id']; ?>)
               </option>
             <?php endforeach; ?>
           </select>
@@ -532,20 +551,46 @@ body {
       </form>
     </td>
     <td>
-      <?php if (!empty($order['logistic_name'])): ?>
-        <span class="badge bg-secondary"><?php echo htmlspecialchars($order['logistic_name']); ?></span>
+      <?php if (!empty($order['logistic_user_id'])): ?>
+        <div>
+          <i class="bi bi-building"></i> 
+          <strong><?php 
+            if (!empty($order['logistic_name'])) {
+                echo htmlspecialchars($order['logistic_name']);
+            } elseif (!empty($order['logistic_username'])) {
+                echo htmlspecialchars($order['logistic_username']);
+            } else {
+                echo "Logistics User #" . $order['logistic_user_id'];
+            }
+          ?></strong>
+          <span class="assigned-badge"><i class="bi bi-check-circle"></i> Assigned</span>
+          <div class="logistics-info">
+            <small>ID: <?php echo $order['logistic_user_id']; ?></small>
+          </div>
+        </div>
       <?php else: ?>
-        <span class="text-muted">Not assigned</span>
+        <span class="text-muted"><i class="bi bi-clock-history"></i> Not assigned</span>
+      <?php endif; ?>
+    </td>
+    <td>
+      <?php if (!empty($order['driver_name'])): ?>
+        <div>
+          <i class="bi bi-truck"></i> <strong><?php echo htmlspecialchars($order['driver_name']); ?></strong>
+          <div class="driver-info">
+            <small>Vehicle: <?php echo htmlspecialchars($order['vehicle_assigned'] ?: 'N/A'); ?></small><br>
+            <small>Plate: <?php echo htmlspecialchars($order['license_plate'] ?: 'N/A'); ?></small>
+            <span class="badge-driver">Status: <?php echo ucfirst($order['driver_status']); ?></span>
+          </div>
+        </div>
+      <?php else: ?>
+        <span class="text-muted"><i class="bi bi-clock"></i> Waiting for driver</span>
       <?php endif; ?>
     </td>
     <td><?php echo getOrderStatusBadge($order['order_status']); ?></td>
     <td><?php echo formatCurrency($order['total_amount']); ?></td>
     <td style="font-size: 0.85rem;">
-      Created: <?php echo date('M d, Y', strtotime($order['created_at'])); ?>
-      <?php if (!empty($order['tracking_date'])): ?>
-        <br>Updated: <?php echo date('M d, Y', strtotime($order['tracking_date'])); ?>
-      <?php endif; ?>
-    </td>
+      <?php echo date('M d, Y', strtotime($order['created_at'])); ?>
+     </td>
     <td>
       <div class="dropdown">
         <button class="btn-outline dropdown-toggle" type="button" data-bs-toggle="dropdown">
@@ -571,20 +616,46 @@ body {
 </div>
 </div>
 
-<!-- Legend -->
+<!-- Debug Section - Shows available logistics users -->
 <div class="container-box mt-3">
   <small class="text-muted">
     <i class="bi bi-info-circle"></i> <strong>Note:</strong> 
     <ul class="mt-2 mb-0">
       <li>Only orders containing products from YOUR store are displayed here.</li>
-      <li>The "Total" column shows only YOUR share of the order total (products from your store only).</li>
-      <li>Assigning a logistics personnel (Role 5) will automatically update the order status to "Processing".</li>
-      <li><i class="bi bi-bell-fill text-primary"></i> <strong>Notifications:</strong> The customer will receive a notification about the logistics assignment.</li>
-      <li><i class="bi bi-star-fill text-warning"></i> <strong>Dual Role Users:</strong> Customers with Dual role (role_id = 4) receive notifications in both their customer and seller views.</li>
+      <li>The "Total" column shows only YOUR share of the order total.</li>
+      <li>Assigning logistics personnel (Role 5) will update order status to "Processing".</li>
+      <li>Once logistics assigns a driver, you'll see driver information here.</li>
+      <li><i class="bi bi-bell-fill text-primary"></i> <strong>Notifications:</strong> Customers receive updates on logistics assignment and delivery status.</li>
     </ul>
-    <?php if (empty($logistic_users)): ?>
-      <br><i class="bi bi-exclamation-triangle"></i> <strong class="text-warning">No logistics personnel found. Please add users with Role 5 (Logistic) first.</strong>
-    <?php endif; ?>
+    
+    <!-- Show available logistics users -->
+    <hr>
+    <strong><i class="bi bi-people"></i> Available Logistics Personnel (Role 5):</strong>
+    <div class="mt-2">
+      <?php if (empty($logistic_users)): ?>
+        <div class="alert alert-warning py-2">
+          <i class="bi bi-exclamation-triangle"></i> 
+          <strong>No logistics personnel found!</strong> Please add users with Role 5 (Logistic) in the database.
+        </div>
+      <?php else: ?>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered">
+            <thead>
+              <tr><th>User ID</th><th>Username</th><th>Display Name</th></tr>
+            </thead>
+            <tbody>
+              <?php foreach ($logistic_users as $lu): ?>
+              <tr>
+                <td><?php echo $lu['user_id']; ?></td>
+                <td><code><?php echo htmlspecialchars($lu['username']); ?></code></td>
+                <td><?php echo htmlspecialchars($lu['display_name']); ?></td>
+              </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+    </div>
   </small>
 </div>
 

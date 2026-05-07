@@ -155,7 +155,7 @@ function getDocumentData($conn, $user_id, $type) {
 }
 
 // Fetch current user data
-$userStmt = $conn->prepare("SELECT user_id, username, email, first_name, last_name, is_active FROM user WHERE user_id = ?");
+$userStmt = $conn->prepare("SELECT user_id, username, email, first_name, last_name, is_active, role_id FROM user WHERE user_id = ?");
 $userStmt->bind_param("i", $user_id);
 $userStmt->execute();
 $userResult = $userStmt->get_result();
@@ -191,13 +191,19 @@ if (!empty($seller['full_name'])) {
 // Decrypt contact number
 $contactNumberDecrypted = decryptContactNumber($seller['contact_number'] ?? '', '');
 
-// Check session for OTP status
-if (isset($_SESSION['otp_sent']) && $_SESSION['otp_sent'] === true) {
-    $otpSent = true;
+// Check session for OTP status - Initialize if not set
+if (!isset($_SESSION['otp_sent'])) {
+    $_SESSION['otp_sent'] = false;
 }
-if (isset($_SESSION['otp_verified']) && $_SESSION['otp_verified'] === true) {
-    $otpVerified = true;
+if (!isset($_SESSION['otp_verified'])) {
+    $_SESSION['otp_verified'] = false;
 }
+if (!isset($_SESSION['otp_attempts'])) {
+    $_SESSION['otp_attempts'] = 0;
+}
+
+$otpSent = $_SESSION['otp_sent'];
+$otpVerified = $_SESSION['otp_verified'];
 
 // Handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -223,7 +229,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $passStmt->close();
                 
                 if (password_verify($current_password, $currentUser['password'])) {
-                    // Generate and store new OTP (don't clear previous OTP, just update)
+                    // Clear any existing OTP first
+                    $clearStmt = $conn->prepare("UPDATE user SET otp_code = NULL, otp_expiry = NULL WHERE user_id = ?");
+                    $clearStmt->bind_param("i", $user_id);
+                    $clearStmt->execute();
+                    $clearStmt->close();
+                    
+                    // Generate and store new OTP
                     $otp = generateOTP();
                     $otp_expiry = date('Y-m-d H:i:s', strtotime('+10 minutes'));
                     $storeStmt = $conn->prepare("UPDATE user SET otp_code = ?, otp_expiry = ? WHERE user_id = ?");
@@ -235,9 +247,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($emailSent) {
                             log_audit_action('otp_request', 'Seller Security', 'User requested password change OTP');
                             $_SESSION['otp_sent'] = true;
-                            $_SESSION['otp_email'] = $user_email;
-                            $_SESSION['otp_code'] = $otp; // Store OTP in session for debugging
+                            $_SESSION['otp_verified'] = false;
+                            $_SESSION['otp_attempts'] = 0;
                             $otpSent = true;
+                            $otpVerified = false;
                             $message = "✓ OTP has been sent to your email address: " . htmlspecialchars($user_email) . ". Please check your inbox or spam folder.";
                             error_log("OTP sent to user $user_id: $otp");
                         } else {
@@ -262,7 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (empty($entered_otp) || !preg_match('/^\d{6}$/', $entered_otp)) {
                 $error = "Please enter a valid 6-digit OTP code.";
             } else {
-                // Check OTP in database - make sure it exists, matches, and hasn't expired
+                // Check OTP in database
                 $checkStmt = $conn->prepare("SELECT otp_code, otp_expiry FROM user WHERE user_id = ? AND otp_code IS NOT NULL");
                 $checkStmt->bind_param("i", $user_id);
                 $checkStmt->execute();
@@ -275,18 +288,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $expiryTime = strtotime($userOtpData['otp_expiry']);
                     $currentTime = time();
                     
-                    error_log("Verifying OTP - Entered: $entered_otp, Stored: $storedOtp, Expires: " . date('Y-m-d H:i:s', $expiryTime) . ", Now: " . date('Y-m-d H:i:s', $currentTime));
+                    error_log("Verifying OTP - Entered: $entered_otp, Stored: $storedOtp");
                     
                     if ($storedOtp === $entered_otp) {
                         if ($currentTime <= $expiryTime) {
                             log_audit_action('otp_verify', 'Seller Security', 'User verified password change OTP');
                             $_SESSION['otp_verified'] = true;
-                            $_SESSION['verified_otp'] = $entered_otp;
+                            $_SESSION['otp_sent'] = true;
                             $otpVerified = true;
+                            $otpSent = true;
                             $message = "✓ OTP verified successfully! You can now change your password.";
                             error_log("OTP verified for user $user_id");
+                            
+                            // Clear OTP from database after successful verification
+                            $clearStmt = $conn->prepare("UPDATE user SET otp_code = NULL, otp_expiry = NULL WHERE user_id = ?");
+                            $clearStmt->bind_param("i", $user_id);
+                            $clearStmt->execute();
+                            $clearStmt->close();
                         } else {
                             $error = "OTP has expired. Please request a new OTP.";
+                            $_SESSION['otp_sent'] = false;
+                            $otpSent = false;
                             error_log("OTP expired for user $user_id");
                         }
                     } else {
@@ -301,15 +323,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $clearStmt->bind_param("i", $user_id);
                             $clearStmt->execute();
                             $clearStmt->close();
-                            unset($_SESSION['otp_sent'], $_SESSION['otp_attempts']);
+                            $_SESSION['otp_sent'] = false;
+                            $_SESSION['otp_verified'] = false;
+                            $_SESSION['otp_attempts'] = 0;
                             $otpSent = false;
+                            $otpVerified = false;
                         } else {
                             $error = "Invalid OTP code. $remaining attempt(s) remaining.";
                         }
-                        error_log("Failed OTP attempt for user $user_id. Entered: $entered_otp, Expected: $storedOtp");
+                        error_log("Failed OTP attempt for user $user_id");
                     }
                 } else {
                     $error = "No OTP found. Please request a new OTP.";
+                    $_SESSION['otp_sent'] = false;
+                    $otpSent = false;
                     error_log("No OTP found for user $user_id");
                 }
             }
@@ -319,16 +346,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         elseif ($action === 'resend_otp') {
             $user_email = $userData['email'];
             
+            // Clear old OTP
+            $clearStmt = $conn->prepare("UPDATE user SET otp_code = NULL, otp_expiry = NULL WHERE user_id = ?");
+            $clearStmt->bind_param("i", $user_id);
+            $clearStmt->execute();
+            $clearStmt->close();
+            
             $otp = generateOTP();
             $otp_expiry = date('Y-m-d H:i:s', strtotime('+10 minutes'));
             $storeStmt = $conn->prepare("UPDATE user SET otp_code = ?, otp_expiry = ? WHERE user_id = ?");
             $storeStmt->bind_param("ssi", $otp, $otp_expiry, $user_id);
             
-            if ($storeStmt->execute() && sendOTPEmail($user_email, $otp, $fullName)) {
-                $_SESSION['otp_sent'] = true;
-                $_SESSION['otp_attempts'] = 0;
-                $message = "✓ New OTP has been sent to your email address: " . htmlspecialchars($user_email);
-                error_log("OTP resent to user $user_id: $otp");
+            if ($storeStmt->execute()) {
+                if (sendOTPEmail($user_email, $otp, $fullName)) {
+                    $_SESSION['otp_sent'] = true;
+                    $_SESSION['otp_verified'] = false;
+                    $_SESSION['otp_attempts'] = 0;
+                    $otpSent = true;
+                    $otpVerified = false;
+                    $message = "✓ New OTP has been sent to your email address: " . htmlspecialchars($user_email);
+                    error_log("OTP resent to user $user_id: $otp");
+                } else {
+                    $error = "Failed to send OTP email. Please try again.";
+                }
             } else {
                 $error = "Failed to resend OTP. Please try again.";
             }
@@ -353,32 +393,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!validatePassword($new_password, $password_errors)) {
                     $error = implode("<br>", $password_errors);
                 } else {
-                    // Verify OTP still valid in database before updating
-                    $otpCheckStmt = $conn->prepare("SELECT otp_code FROM user WHERE user_id = ? AND otp_code IS NOT NULL AND otp_expiry > NOW()");
-                    $otpCheckStmt->bind_param("i", $user_id);
-                    $otpCheckStmt->execute();
-                    $hasValidOtp = $otpCheckStmt->get_result()->num_rows > 0;
-                    $otpCheckStmt->close();
+                    // Check if new password is same as old password
+                    $passStmt = $conn->prepare("SELECT password FROM user WHERE user_id = ?");
+                    $passStmt->bind_param("i", $user_id);
+                    $passStmt->execute();
+                    $currentUser = $passStmt->get_result()->fetch_assoc();
+                    $passStmt->close();
                     
-                    if (!$hasValidOtp) {
-                        $error = "OTP has expired or is invalid. Please request a new OTP.";
-                        unset($_SESSION['otp_verified'], $_SESSION['otp_sent'], $_SESSION['verified_otp']);
-                        $otpVerified = false;
-                        $otpSent = false;
+                    if (password_verify($new_password, $currentUser['password'])) {
+                        $error = "New password cannot be the same as your current password.";
                     } else {
-                        // Check if new password is same as old password
-                        $passStmt = $conn->prepare("SELECT password FROM user WHERE user_id = ?");
-                        $passStmt->bind_param("i", $user_id);
-                        $passStmt->execute();
-                        $currentUser = $passStmt->get_result()->fetch_assoc();
-                        $passStmt->close();
+                        $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
+                        $updateStmt = $conn->prepare("UPDATE user SET password = ? WHERE user_id = ?");
+                        $updateStmt->bind_param("si", $new_hash, $user_id);
                         
-                        if (password_verify($new_password, $currentUser['password'])) {
-                            $error = "New password cannot be the same as your current password.";
-                        } else {
-                            $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-                            $updateStmt = $conn->prepare("UPDATE user SET password = ?, otp_code = NULL, otp_expiry = NULL WHERE user_id = ?");
-                            $updateStmt->bind_param("si", $new_hash, $user_id);
+                        if ($updateStmt->execute()) {
+                            $message = "✓ Password changed successfully! Please log in again.";
                             
                             if ($updateStmt->execute()) {
                                 log_audit_action('update', 'Seller Security', 'User changed their password');
@@ -399,13 +429,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             $updateStmt->close();
                         }
+                        $updateStmt->close();
                     }
                 }
             }
         }
         
-        // Handle Profile Update
+        // Handle Profile Update (combined for both tabs)
         elseif ($action === 'update_profile') {
+            // Determine which form was submitted based on fields
             $shop_name = trim($_POST['shop_name'] ?? '');
             $shop_address = trim($_POST['shop_address'] ?? '');
             $contact_number_raw = trim($_POST['contact_number'] ?? '');
@@ -421,45 +453,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $last_name = $nameParts[1] ?? '';
             
             $validation_errors = [];
-            if (empty($shop_name)) $validation_errors[] = "Shop name is required.";
-            if (empty($full_name_profile)) $validation_errors[] = "Full name is required.";
-            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $validation_errors[] = "Valid email address is required.";
-            if (!empty($age) && (!is_numeric($age) || $age < 18 || $age > 120)) $validation_errors[] = "Age must be between 18 and 120.";
-            if (empty($business_category)) $validation_errors[] = "Business category is required.";
             
-            if (empty($validation_errors)) {
+            // Validate based on which fields are present
+            if (!empty($shop_name)) {
+                if (empty($shop_name)) $validation_errors[] = "Shop name is required.";
+                if (empty($contact_number_raw)) $validation_errors[] = "Contact number is required.";
+            }
+            
+            if (!empty($full_name_profile)) {
+                if (empty($full_name_profile)) $validation_errors[] = "Full name is required.";
+                if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $validation_errors[] = "Valid email address is required.";
+                if (!empty($age) && (!is_numeric($age) || $age < 18 || $age > 120)) $validation_errors[] = "Age must be between 18 and 120.";
+                if (empty($business_category)) $validation_errors[] = "Business category is required.";
+            }
+            
+            if (empty($validation_errors) && (!empty($shop_name) || !empty($full_name_profile))) {
                 try {
                     $conn->begin_transaction();
                     
-                    $emailCheckStmt = $conn->prepare("SELECT user_id FROM user WHERE email = ? AND user_id != ?");
-                    $emailCheckStmt->bind_param("si", $email, $user_id);
-                    $emailCheckStmt->execute();
-                    if ($emailCheckStmt->get_result()->num_rows > 0) {
-                        throw new Exception("Email address is already in use by another account.");
+                    // Update user table if email or name is provided
+                    if (!empty($email) || !empty($first_name)) {
+                        $emailCheckStmt = $conn->prepare("SELECT user_id FROM user WHERE email = ? AND user_id != ?");
+                        $emailCheckStmt->bind_param("si", $email, $user_id);
+                        $emailCheckStmt->execute();
+                        if ($emailCheckStmt->get_result()->num_rows > 0) {
+                            throw new Exception("Email address is already in use by another account.");
+                        }
+                        $emailCheckStmt->close();
+                        
+                        $updateUserStmt = $conn->prepare("UPDATE user SET first_name = ?, last_name = ?, email = ? WHERE user_id = ?");
+                        $updateUserStmt->bind_param("sssi", $first_name, $last_name, $email, $user_id);
+                        $updateUserStmt->execute();
+                        $updateUserStmt->close();
                     }
-                    $emailCheckStmt->close();
                     
-                    $encrypted_contact = encryptContactNumber($contact_number_raw);
-                    
-                    $updateUserStmt = $conn->prepare("UPDATE user SET first_name = ?, last_name = ?, email = ? WHERE user_id = ?");
-                    $updateUserStmt->bind_param("sssi", $first_name, $last_name, $email, $user_id);
-                    $updateUserStmt->execute();
-                    $updateUserStmt->close();
+                    // Update seller table
+                    $encrypted_contact = !empty($contact_number_raw) ? encryptContactNumber($contact_number_raw) : $seller['contact_number'];
                     
                     $updateSellerStmt = $conn->prepare("
                         UPDATE seller 
-                        SET full_name = ?, 
-                            shop_name = ?, 
-                            shop_address = ?, 
-                            contact_number = ?,
-                            business_category = ?,
-                            tin_id = ?,
-                            age = ?,
-                            additional_info = ?
+                        SET full_name = COALESCE(NULLIF(?, ''), full_name),
+                            shop_name = COALESCE(NULLIF(?, ''), shop_name),
+                            shop_address = COALESCE(NULLIF(?, ''), shop_address),
+                            contact_number = COALESCE(?, contact_number),
+                            business_category = COALESCE(NULLIF(?, ''), business_category),
+                            tin_id = COALESCE(NULLIF(?, ''), tin_id),
+                            age = COALESCE(?, age),
+                            additional_info = COALESCE(NULLIF(?, ''), additional_info)
                         WHERE user_id = ?
                     ");
+                    
                     $updateSellerStmt->bind_param("ssssssssi", 
-                        $full_name_profile, 
+                        $full_name_profile,
                         $shop_name, 
                         $shop_address, 
                         $encrypted_contact,
@@ -474,17 +519,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $conn->commit();
                         log_audit_action('update', 'Seller Profile', 'User updated their seller profile information');
                         $message = "Profile updated successfully!";
-                        $_SESSION['first_name'] = $first_name;
-                        $_SESSION['last_name'] = $last_name;
-                        $userData['email'] = $email;
-                        $seller['shop_name'] = $shop_name;
-                        $seller['shop_address'] = $shop_address;
-                        $seller['business_category'] = $business_category;
-                        $seller['tin_id'] = $tin_id;
-                        $seller['age'] = $age;
-                        $seller['additional_info'] = $additional_info;
-                        $fullName = $full_name_profile;
-                        $contactNumberDecrypted = $contact_number_raw;
+                        
+                        // Update session data
+                        if (!empty($first_name)) $_SESSION['first_name'] = $first_name;
+                        if (!empty($last_name)) $_SESSION['last_name'] = $last_name;
+                        
+                        // Refresh data
+                        $userData['email'] = $email ?: $userData['email'];
+                        $seller['shop_name'] = $shop_name ?: $seller['shop_name'];
+                        $seller['shop_address'] = $shop_address ?: $seller['shop_address'];
+                        $seller['business_category'] = $business_category ?: $seller['business_category'];
+                        $seller['tin_id'] = $tin_id ?: $seller['tin_id'];
+                        $seller['age'] = $age ?: $seller['age'];
+                        $seller['additional_info'] = $additional_info ?: $seller['additional_info'];
+                        $fullName = $full_name_profile ?: $fullName;
+                        $contactNumberDecrypted = $contact_number_raw ?: $contactNumberDecrypted;
                     } else {
                         throw new Exception("Failed to update seller information.");
                     }
@@ -494,7 +543,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = $e->getMessage();
                     error_log("Seller profile update error: " . $e->getMessage());
                 }
-            } else {
+            } elseif (!empty($validation_errors)) {
                 $error = implode("<br>", $validation_errors);
             }
         }
@@ -752,22 +801,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (/[a-z]/.test(val)) strength++;
             if (/[0-9]/.test(val)) strength++;
             if (/[^A-Za-z0-9]/.test(val)) strength++;
-            strengthDiv.className = 'password-strength';
-            if (strength <= 2) strengthDiv.classList.add('strength-weak');
-            else if (strength <= 3) strengthDiv.classList.add('strength-fair');
-            else if (strength <= 4) strengthDiv.classList.add('strength-good');
-            else strengthDiv.classList.add('strength-strong');
+            if (strengthDiv) {
+                strengthDiv.className = 'password-strength';
+                if (strength <= 2) strengthDiv.classList.add('strength-weak');
+                else if (strength <= 3) strengthDiv.classList.add('strength-fair');
+                else if (strength <= 4) strengthDiv.classList.add('strength-good');
+                else strengthDiv.classList.add('strength-strong');
+            }
         });
     }
     if (confirm) {
         confirm.addEventListener('input', () => {
             const matchDiv = document.getElementById('passwordMatch');
             if (pwd && pwd.value === confirm.value && confirm.value !== '') {
-                matchDiv.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Passwords match!</span>';
+                if (matchDiv) matchDiv.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Passwords match!</span>';
             } else if (confirm.value !== '') {
-                matchDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Passwords do not match!</span>';
+                if (matchDiv) matchDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Passwords do not match!</span>';
             } else {
-                matchDiv.innerHTML = '';
+                if (matchDiv) matchDiv.innerHTML = '';
             }
         });
     }
@@ -790,7 +841,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-function toggleSidebar() { document.getElementById("sidebar").classList.toggle("collapsed"); }
+function toggleSidebar() { 
+    document.getElementById("sidebar").classList.toggle("collapsed"); 
+}
 </script>
 </head>
 <body>
@@ -843,8 +896,8 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         <textarea name="shop_address" class="form-control" rows="3"><?php echo htmlspecialchars($seller['shop_address'] ?? ''); ?></textarea>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">CONTACT NUMBER</label>
-                        <input type="text" name="contact_number" class="form-control" value="<?php echo htmlspecialchars($contactNumberDecrypted); ?>">
+                        <label class="form-label text-muted small fw-bold">CONTACT NUMBER *</label>
+                        <input type="text" name="contact_number" class="form-control" value="<?php echo htmlspecialchars($contactNumberDecrypted); ?>" required>
                         <small class="text-muted">Format: +63XXXXXXXXXX or 09XXXXXXXXX</small>
                     </div>
                 </div>
@@ -873,8 +926,8 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         <small class="text-muted">Changing email will update your login credentials.</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">AGE *</label>
-                        <input type="number" name="age" class="form-control" value="<?php echo htmlspecialchars($seller['age'] ?? ''); ?>" min="18" max="120" required>
+                        <label class="form-label text-muted small fw-bold">AGE</label>
+                        <input type="number" name="age" class="form-control" value="<?php echo htmlspecialchars($seller['age'] ?? ''); ?>" min="18" max="120">
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">TIN ID</label>
@@ -884,7 +937,9 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         <label class="form-label text-muted small fw-bold">BUSINESS CATEGORY *</label>
                         <select name="business_category" class="form-select" required>
                             <option value="">Select category</option>
-                            <?php $cats = ['Men', 'Women', 'Electronics', 'Furniture', 'Food']; foreach($cats as $c): ?>
+                            <?php 
+                            $cats = ['Men', 'Women', 'Electronics', 'Furniture', 'Food', 'Beauty', 'Health', 'Sports', 'Toys', 'Books', 'Automotive', 'Pets']; 
+                            foreach($cats as $c): ?>
                             <option value="<?php echo $c; ?>" <?php echo ($seller['business_category'] ?? '') === $c ? 'selected' : ''; ?>><?php echo $c; ?></option>
                             <?php endforeach; ?>
                         </select>
@@ -909,7 +964,7 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                 <?php if (!empty($seller['shop_image'])): ?>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">Current Shop Image</label>
-                    <div><img src="<?php echo displayShopImage($seller['shop_image']); ?>" class="shop-image-preview"></div>
+                    <div><img src="<?php echo displayShopImage($seller['shop_image']); ?>" class="shop-image-preview" alt="Shop Image"></div>
                 </div>
                 <?php endif; ?>
                 <form method="POST" enctype="multipart/form-data">
@@ -973,7 +1028,7 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                 <!-- STEP 1: Request OTP -->
                 <div class="otp-step">
                     <div class="d-flex align-items-center mb-3">
-                        <span class="step-badge <?php echo $otpSent ? 'step-completed' : 'step-active'; ?>">1</span>
+                        <span class="step-badge <?php echo $otpSent && !$otpVerified ? 'step-completed' : ($otpSent ? 'step-completed' : 'step-active'); ?>">1</span>
                         <h6 class="mb-0">Request OTP Verification</h6>
                     </div>
                     <form method="POST" class="mb-3">
@@ -981,9 +1036,9 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         <input type="hidden" name="action" value="send_otp">
                         <div class="mb-3">
                             <label class="form-label text-muted small fw-bold">CURRENT PASSWORD *</label>
-                            <div class="password-input-wrapper" style="position: relative;">
+                            <div class="position-relative">
                                 <input type="password" name="current_password" class="form-control" required <?php echo ($otpSent) ? 'disabled' : ''; ?>>
-                                <span class="password-toggle" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer;">
+                                <span class="password-toggle position-absolute end-0 top-50 translate-middle-y me-2" style="cursor: pointer;">
                                     <i class="bi bi-eye-slash"></i>
                                 </span>
                             </div>
@@ -1000,8 +1055,8 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         <button type="submit" class="btn btn-brand" <?php echo ($otpSent) ? 'disabled' : ''; ?>>
                             <i class="bi bi-envelope-paper"></i> Send OTP
                         </button>
-                        <?php if ($otpSent): ?>
-                            <span class="text-success ms-3"><i class="bi bi-check-circle-fill"></i> OTP Sent!</span>
+                        <?php if ($otpSent && !$otpVerified): ?>
+                            <span class="text-success ms-3"><i class="bi bi-check-circle-fill"></i> OTP Sent! Check your email.</span>
                         <?php endif; ?>
                     </form>
                 </div>
@@ -1032,7 +1087,7 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                         </div>
                         <?php if ($otpVerified): ?>
                             <div class="mt-2 text-success">
-                                <i class="bi bi-check-circle-fill"></i> OTP Verified Successfully!
+                                <i class="bi bi-check-circle-fill"></i> OTP Verified Successfully! You can now change your password.
                             </div>
                         <?php endif; ?>
                     </form>
@@ -1051,9 +1106,9 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                             
                             <div class="mb-3">
                                 <label class="form-label text-muted small fw-bold">NEW PASSWORD *</label>
-                                <div class="password-input-wrapper" style="position: relative;">
+                                <div class="position-relative">
                                     <input type="password" name="new_password" id="new_password" class="form-control" required>
-                                    <span class="password-toggle" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer;">
+                                    <span class="password-toggle position-absolute end-0 top-50 translate-middle-y me-2" style="cursor: pointer;">
                                         <i class="bi bi-eye-slash"></i>
                                     </span>
                                 </div>
@@ -1063,9 +1118,9 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                             
                             <div class="mb-3">
                                 <label class="form-label text-muted small fw-bold">CONFIRM NEW PASSWORD *</label>
-                                <div class="password-input-wrapper" style="position: relative;">
+                                <div class="position-relative">
                                     <input type="password" name="confirm_password" id="confirm_password" class="form-control" required>
-                                    <span class="password-toggle" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer;">
+                                    <span class="password-toggle position-absolute end-0 top-50 translate-middle-y me-2" style="cursor: pointer;">
                                         <i class="bi bi-eye-slash"></i>
                                     </span>
                                 </div>
@@ -1075,7 +1130,7 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
                             <button type="submit" class="btn btn-success">
                                 <i class="bi bi-key"></i> Update Password
                             </button>
-                            <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='seller_profile.php'">
+                            <button type="button" class="btn btn-outline-secondary" onclick="location.reload()">
                                 <i class="bi bi-x-circle"></i> Cancel
                             </button>
                         </form>
