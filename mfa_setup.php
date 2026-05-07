@@ -11,6 +11,7 @@ if (!isset($_SESSION['temp_user_id'])) {
 $ga = new GoogleAuthenticator();
 $user_id = $_SESSION['temp_user_id'];
 $username = $_SESSION['temp_username'];
+$role_id = $_SESSION['temp_role_id'];
 
 // Generate secret if not already in session
 if (!isset($_SESSION['mfa_setup_secret'])) {
@@ -30,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt->bind_param("si", $secret, $user_id);
         
         if ($stmt->execute()) {
-            
             // Log user in fully
             $_SESSION['user_id'] = $_SESSION['temp_user_id'];
             $_SESSION['username'] = $_SESSION['temp_username'];
@@ -44,6 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // Store login_id in session for logout tracking
             $_SESSION['current_login_id'] = $conn->insert_id;
             
+            // Log audit action for login
+            if (function_exists('log_audit_action')) {
+                log_audit_action('login', 'Authentication', 'User logged in successfully');
+            }
+            
             // Cleanup temp session
             unset($_SESSION['temp_user_id']);
             unset($_SESSION['temp_username']);
@@ -52,12 +57,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
             // Redirect based on role
             $role_id = $_SESSION['role_id'];
-            if ($role_id == 1) header("Location: admin_dashboard.php");
-            elseif ($role_id == 2) header("Location: customer_home.php");
-            elseif ($role_id == 3) header("Location: seller_dashboard.php");
-            elseif ($role_id == 4) header("Location: customer_home.php");
-            elseif ($role_id == 5) header("Location: logi_settings.php");
-            else header("Location: landing.php");
+            switch ($role_id) {
+                case 1: // Admin
+                    header("Location: admin_dashboard.php");
+                    break;
+                case 2: // Customer
+                    header("Location: customer_home.php");
+                    break;
+                case 3: // Seller
+                case 4: // Dual
+                    header("Location: seller_dashboard.php");
+                    break;
+                case 5: // Logistics
+                    header("Location: logi_dashboard.php");
+                    break;
+                case 6: // Driver
+                    header("Location: driver_dashboard.php");
+                    break;
+                default:
+                    header("Location: landing.php");
+                    break;
+            }
             exit;
         } else {
             $error = "Failed to save MFA settings. Please try again.";
@@ -90,6 +110,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     </script>
+    <style>
+        .role-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .role-driver { background: #e0e7ff; color: #4338ca; }
+        .role-logistics { background: #fef3c7; color: #d97706; }
+        .role-seller { background: #d1fae5; color: #059669; }
+        .role-customer { background: #dbeafe; color: #2563eb; }
+        .role-admin { background: #fee2e2; color: #dc2626; }
+    </style>
 </head>
 <body class="bg-custombg">
     <div class="min-h-screen flex items-center justify-center py-12 px-4">
@@ -100,23 +135,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                 </div>
-                <h1 class="text-2xl font-bold text-brand-900">Setup MFA</h1>
+                <h1 class="text-2xl font-bold text-brand-900">
+                    Setup MFA
+                    <?php 
+                    $roleNames = [1 => 'Admin', 2 => 'Customer', 3 => 'Seller', 4 => 'Dual', 5 => 'Logistics', 6 => 'Driver'];
+                    if (isset($role_id)): ?>
+                    <span class="role-badge role-<?php echo strtolower($roleNames[$role_id] ?? ''); ?>">
+                        <?php echo $roleNames[$role_id] ?? 'User'; ?>
+                    </span>
+                    <?php endif; ?>
+                </h1>
                 <p class="text-gray-500 mt-2 text-sm">Scan the QR code with your Google Authenticator app</p>
             </div>
 
             <?php if ($error): ?>
                 <div class="mb-6 p-3 bg-red-100 text-red-700 rounded-lg text-sm text-center font-medium">
-                    <?php echo $error; ?>
+                    <?php echo htmlspecialchars($error); ?>
                 </div>
             <?php endif; ?>
 
             <div class="flex justify-center mb-8 p-4 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                <img src="<?php echo $qrCodeUrl; ?>" alt="QR Code" class="rounded-lg shadow-sm">
+                <img src="<?php echo htmlspecialchars($qrCodeUrl); ?>" alt="QR Code" class="rounded-lg shadow-sm">
             </div>
 
             <div class="bg-brand-50 p-4 rounded-xl mb-8">
                 <p class="text-xs text-brand-900 font-semibold mb-1 uppercase tracking-wider">Manual Entry Key:</p>
-                <code class="text-sm font-mono text-brand-500 break-all"><?php echo $secret; ?></code>
+                <code class="text-sm font-mono text-brand-500 break-all select-all"><?php echo htmlspecialchars($secret); ?></code>
             </div>
 
             <form method="POST" class="space-y-6">
@@ -124,7 +168,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <label class="block text-sm font-semibold mb-2 text-gray-700">Verification Code</label>
                     <input type="text" name="mfa_code" maxlength="6" 
                         class="w-full p-4 border border-gray-300 rounded-xl text-center text-2xl tracking-[0.5em] font-bold focus:ring-2 focus:ring-brand-500 outline-none transition" 
-                        placeholder="000000" required>
+                        placeholder="000000" 
+                        pattern="[0-9]{6}"
+                        title="Please enter 6-digit code"
+                        autocomplete="off"
+                        required>
+                    <p class="text-xs text-gray-500 mt-2">Enter the 6-digit code from your authenticator app</p>
                 </div>
 
                 <button type="submit" 
@@ -133,9 +182,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </button>
             </form>
 
-            <p class="text-center mt-6">
+            <div class="mt-6 text-center">
+                <hr class="my-4">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                    <p class="text-xs text-yellow-800">
+                        <strong>⚠️ Important:</strong> Save your recovery codes in a safe place. 
+                        You'll need them if you lose access to your authenticator app.
+                    </p>
+                </div>
                 <a href="login.php" class="text-sm text-gray-500 hover:text-brand-900 transition underline">Cancel and go back</a>
-            </p>
+            </div>
         </div>
     </div>
 </body>

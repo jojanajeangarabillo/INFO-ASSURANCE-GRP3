@@ -16,91 +16,101 @@ $timeout_minutes = $row ? $row['session_timeout_minutes'] : 30;
 if (!isset($_SESSION['last_activity'])) {
   $_SESSION['last_activity'] = time();
 } elseif (time() - $_SESSION['last_activity'] > $timeout_minutes * 60) {
-  // Session expired, logout
   session_unset();
   session_destroy();
   header("Location: login.php");
   exit;
 } else {
-  // Update last activity
   $_SESSION['last_activity'] = time();
 }
 
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
 // Get logistics user info
-$user_stmt = $conn->prepare("SELECT username, first_name, last_name FROM user WHERE user_id = ?");
+$user_stmt = $conn->prepare("SELECT username, first_name, last_name, email FROM user WHERE user_id = ?");
 $user_stmt->bind_param("i", $user_id);
 $user_stmt->execute();
 $user_info = $user_stmt->get_result()->fetch_assoc();
 $user_stmt->close();
 
-// Get dashboard statistics
+// Get dashboard statistics - FILTERED BY LOGGED-IN LOGISTICS USER
 $stats = [];
 
-// Pending Pickup (processing status from orders)
+// Pending Pickup (processing status from orders assigned to this logistics user)
 $pending_stmt = $conn->prepare("
-    SELECT COUNT(*) as count 
+    SELECT COUNT(DISTINCT o.order_id) as count 
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
-    WHERE o.order_status = 'processing'
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
+    WHERE o.order_status = 'processing' AND dt.logistic_user_id = ?
 ");
+$pending_stmt->bind_param("i", $user_id);
 $pending_stmt->execute();
 $stats['pending_pickup'] = $pending_stmt->get_result()->fetch_assoc()['count'];
 $pending_stmt->close();
 
-// In Transit (shipped status)
+// In Transit (shipped status - assigned to this logistics user)
 $transit_stmt = $conn->prepare("
-    SELECT COUNT(*) as count 
+    SELECT COUNT(DISTINCT o.order_id) as count 
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
-    WHERE o.order_status = 'shipped'
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
+    WHERE o.order_status = 'shipped' AND dt.logistic_user_id = ?
 ");
+$transit_stmt->bind_param("i", $user_id);
 $transit_stmt->execute();
 $stats['in_transit'] = $transit_stmt->get_result()->fetch_assoc()['count'];
 $transit_stmt->close();
 
-// Out for Delivery
+// Out for Delivery - assigned to this logistics user
 $out_for_delivery_stmt = $conn->prepare("
-    SELECT COUNT(*) as count 
+    SELECT COUNT(DISTINCT o.order_id) as count 
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
-    WHERE o.order_status = 'out_for_delivery'
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
+    WHERE o.order_status = 'out_for_delivery' AND dt.logistic_user_id = ?
 ");
+$out_for_delivery_stmt->bind_param("i", $user_id);
 $out_for_delivery_stmt->execute();
 $stats['out_for_delivery'] = $out_for_delivery_stmt->get_result()->fetch_assoc()['count'];
 $out_for_delivery_stmt->close();
 
-// Delivered Today
+// Delivered Today - assigned to this logistics user
 $delivered_today_stmt = $conn->prepare("
-    SELECT COUNT(*) as count 
+    SELECT COUNT(DISTINCT o.order_id) as count 
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
     WHERE o.order_status = 'delivered' 
     AND DATE(o.updated_at) = CURDATE()
+    AND dt.logistic_user_id = ?
 ");
+$delivered_today_stmt->bind_param("i", $user_id);
 $delivered_today_stmt->execute();
 $stats['delivered_today'] = $delivered_today_stmt->get_result()->fetch_assoc()['count'];
 $delivered_today_stmt->close();
 
-// Get recent deliveries with pagination
+// Get recent deliveries with pagination - FILTERED BY LOGGED-IN LOGISTICS USER
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $items_per_page = 5;
 $offset = ($page - 1) * $items_per_page;
 
-// Count total deliveries for pagination
+// Count total deliveries for pagination - only for this logistics user
 $count_stmt = $conn->prepare("
     SELECT COUNT(DISTINCT o.order_id) as total
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
     WHERE o.order_status IN ('processing', 'shipped', 'out_for_delivery', 'delivered')
+    AND dt.logistic_user_id = ?
 ");
+$count_stmt->bind_param("i", $user_id);
 $count_stmt->execute();
 $total_deliveries = $count_stmt->get_result()->fetch_assoc()['total'];
 $count_stmt->close();
 $total_pages = ceil($total_deliveries / $items_per_page);
 
-// Get recent deliveries
+// Get recent deliveries - only for this logistics user
 $deliveries_stmt = $conn->prepare("
     SELECT DISTINCT o.order_id, o.order_number, o.order_status, o.created_at, o.updated_at,
            u.username as customer_name,
@@ -109,20 +119,13 @@ $deliveries_stmt = $conn->prepare("
     FROM orders o
     JOIN order_item oi ON o.order_id = oi.order_id
     JOIN user u ON o.customer_id = u.user_id
-    LEFT JOIN (
-        SELECT order_id, status, logistic_user_id
-        FROM delivery_tracking dt1
-        WHERE delivery_tracking_id = (
-            SELECT MAX(delivery_tracking_id)
-            FROM delivery_tracking dt2
-            WHERE dt2.order_id = dt1.order_id
-        )
-    ) dt ON o.order_id = dt.order_id
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
     WHERE o.order_status IN ('processing', 'shipped', 'out_for_delivery', 'delivered')
+    AND dt.logistic_user_id = ?
     ORDER BY o.updated_at DESC
     LIMIT ? OFFSET ?
 ");
-$deliveries_stmt->bind_param("ii", $items_per_page, $offset);
+$deliveries_stmt->bind_param("iii", $user_id, $items_per_page, $offset);
 $deliveries_stmt->execute();
 $deliveries_result = $deliveries_stmt->get_result();
 
@@ -151,6 +154,18 @@ while ($row = $deliveries_result->fetch_assoc()) {
     $deliveries[] = $row;
 }
 $deliveries_stmt->close();
+
+// Get total assigned orders count
+$total_assigned_stmt = $conn->prepare("
+    SELECT COUNT(DISTINCT o.order_id) as total
+    FROM orders o
+    JOIN delivery_tracking dt ON o.order_id = dt.order_id
+    WHERE dt.logistic_user_id = ?
+");
+$total_assigned_stmt->bind_param("i", $user_id);
+$total_assigned_stmt->execute();
+$total_assigned = $total_assigned_stmt->get_result()->fetch_assoc()['total'];
+$total_assigned_stmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -467,6 +482,14 @@ p {
   border-radius: 12px;
   margin-bottom: 20px;
 }
+
+.info-badge {
+  background-color: #e7f3ff;
+  border-left: 4px solid #0d6efd;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
 </style>
 </head>
 <body>
@@ -488,6 +511,9 @@ p {
     <i class="fas fa-cart-shopping"></i><span class="text">Orders</span>
   </a>
 
+  <a href="logi_drivers.php" class="<?= $current_page == 'logi_drivers.php' ? 'active' : '' ?>">
+    <i class="fas fa-truck"></i><span class="text">Drivers</span>
+  </a>
 
   <a href="logi_reports.php" class="<?= $current_page == 'logi_reports.php' ? 'active' : '' ?>">
     <i class="fas fa-file-lines"></i><span class="text">Reports</span>
@@ -502,16 +528,17 @@ p {
   </a>
 </div>
 
-<!-- MAIN CONTENT (ONLY IMPLEMENTATION, NO DELIVERY VOLUME CARD) -->
+<!-- MAIN CONTENT -->
 <div class="main-content" id="main">
   <div class="center-box">
   
-    <!-- Welcome Banner -->
+    <!-- Welcome Banner with User Info -->
     <div class="welcome-banner">
       <div class="flex">
         <div>
           <h2>Welcome back, <?php echo htmlspecialchars($user_info['first_name'] ?: $user_info['username']); ?>!</h2>
           <p>Here's your delivery overview for today</p>
+          <small><i class="fas fa-user"></i> Logistics ID: <?php echo $user_id; ?> | <i class="fas fa-envelope"></i> <?php echo htmlspecialchars($user_info['email']); ?></small>
         </div>
         <button class="refresh-btn" onclick="window.location.reload()">
           <i class="fas fa-sync-alt"></i> Refresh
@@ -519,7 +546,13 @@ p {
       </div>
     </div>
     
-    <!-- 4 metric cards with real data -->
+    <!-- Info Banner -->
+    <div class="info-badge">
+      <i class="fas fa-info-circle"></i> 
+      <strong>Showing orders assigned to you:</strong> Total assigned orders: <?php echo $total_assigned; ?>
+    </div>
+    
+    <!-- 4 metric cards with real data (filtered by logistics user) -->
     <div class="metrics-grid">
       <div class="metric-card">
         <div class="metric-icon"><i class="fas fa-box-open"></i></div>
@@ -551,7 +584,7 @@ p {
       </div>
     </div>
 
-    <!-- Recent Deliveries -->
+    <!-- Recent Deliveries (filtered by logistics user) -->
     <div class="card-box">
       <div class="flex">
         <h3>Recent Deliveries</h3>
@@ -572,7 +605,7 @@ p {
         <?php if (empty($deliveries)): ?>
           <div class="delivery-row">
             <div colspan="4" style="text-align: center; padding: 40px; color: #999;">
-              No deliveries found
+              No deliveries assigned to you yet.
             </div>
           </div>
         <?php else: ?>
