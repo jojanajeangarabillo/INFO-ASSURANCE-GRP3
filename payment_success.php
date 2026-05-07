@@ -35,6 +35,10 @@ if (isset($_SESSION['items_to_clear']) && !empty($_SESSION['items_to_clear'])) {
     unset($_SESSION['items_to_clear']);
 }
 
+// 4. Log the successful payment in audit log
+log_audit_action('create', 'Customer Orders', "Customer successfully paid for Order #$orderNumber");
+
+
 // Clear session variables
 unset($_SESSION['last_order_id']);
 unset($_SESSION['last_order_number']);

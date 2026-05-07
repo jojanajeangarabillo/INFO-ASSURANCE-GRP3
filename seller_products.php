@@ -628,14 +628,14 @@ if ($safety_result['variant_in_product'] > 0) {
 
 <?php if ($message): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <?php echo $message; ?>
+        <?php echo htmlspecialchars($message); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 <?php endif; ?>
 
 <?php if ($error): ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <?php echo $error; ?>
+        <?php echo htmlspecialchars($error); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 <?php endif; ?>
@@ -665,6 +665,7 @@ if ($safety_result['variant_in_product'] > 0) {
       </div>
       <div class="modal-body">
         <form id="addProductForm" method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
           <div class="mb-3">
             <label class="form-label">Product Name *</label>
             <input type="text" name="name" class="form-control" required>
@@ -737,6 +738,7 @@ if ($safety_result['variant_in_product'] > 0) {
       </div>
       <div class="modal-body">
         <form method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
           <input type="hidden" name="product_id" id="variant_product_id" value="">
           <div class="mb-3">
             <label class="form-label">Size *</label>
@@ -778,6 +780,7 @@ if ($safety_result['variant_in_product'] > 0) {
       </div>
       <div class="modal-body">
         <form method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
           <input type="hidden" name="variant_id" id="edit_variant_id" value="">
           <div class="mb-3">
             <label class="form-label">Size *</label>

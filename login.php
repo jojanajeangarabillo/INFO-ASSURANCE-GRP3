@@ -174,11 +174,11 @@ if (isset($_POST['login'])) {
 
         <?php
         if (isset($_SESSION['success_message'])) {
-          echo "<div class='mt-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm text-center font-medium'>" . $_SESSION['success_message'] . "</div>";
+          echo "<div class='mt-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm text-center font-medium'>" . htmlspecialchars($_SESSION['success_message']) . "</div>";
           unset($_SESSION['success_message']);
         }
         if (isset($_SESSION['error_message'])) {
-          echo "<div class='mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm text-center font-medium'>" . $_SESSION['error_message'] . "</div>";
+          echo "<div class='mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm text-center font-medium'>" . htmlspecialchars($_SESSION['error_message']) . "</div>";
           unset($_SESSION['error_message']);
         }
         ?>

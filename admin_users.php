@@ -60,6 +60,16 @@ if (isset($_POST['action']) && isset($_POST['user_id'])) {
 
     if (isset($stmt)) {
         $stmt->execute();
+        
+        // Fetch username for audit log
+        $userStmt = $conn->prepare("SELECT username FROM user WHERE user_id = ?");
+        $userStmt->bind_param("i", $target_user_id);
+        $userStmt->execute();
+        $userResult = $userStmt->get_result()->fetch_assoc();
+        $targetUsername = $userResult['username'] ?? 'Unknown User';
+        
+        log_audit_action($action, 'User Management', "Admin " . ($action === 'lock' ? 'locked' : 'unlocked') . " user: $targetUsername");
+        
         header("Location: admin_users.php?msg=success");
         exit;
     }
@@ -154,7 +164,10 @@ if (isset($_POST['add_logistic'])) {
             </html>
         ";
         $emailSent = send_email($email, $subject, $body);
-        
+
+        // Log audit action
+        log_audit_action('create', 'Logistic Partners', "Admin created logistic partner account for user: $username");
+        //        
         if ($emailSent) {
             header("Location: admin_users.php?msg=logistic_success");
         } else {
@@ -261,6 +274,9 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
             }
             send_email($seller['email'], "Your Seller Account Has Been Approved!", $emailBody);
             
+            // Log audit action
+            log_audit_action('approve', 'Seller Applications', "Admin approved seller application for shop: " . $seller['shop_name']);
+            
             // Create notification
             $notifStmt = $conn->prepare("INSERT INTO notification (user_id, title, message, is_read, created_at) VALUES (?, ?, ?, 0, NOW())");
             if ($roleType == 'Dual (Customer & Seller)') {
@@ -307,6 +323,9 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
             $notifMessage = "We regret to inform you that your seller application was not approved. Please check your email for more details.";
             $notifStmt->bind_param("iss", $seller['user_id'], $notifTitle, $notifMessage);
             $notifStmt->execute();
+            
+            // Log audit action
+            log_audit_action('reject', 'Seller Applications', "Admin rejected seller application for shop: " . $seller['shop_name']);
             
             // Delete seller record
             $stmt = $conn->prepare("DELETE FROM seller WHERE seller_id = ?");

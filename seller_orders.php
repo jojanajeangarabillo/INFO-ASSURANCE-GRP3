@@ -443,14 +443,14 @@ body {
 <!-- Success/Error Messages -->
 <?php if (isset($success_message)): ?>
     <div class="alert alert-success alert-custom alert-dismissible fade show" role="alert">
-        <i class="bi bi-check-circle-fill me-2"></i> <?php echo $success_message; ?>
+        <i class="bi bi-check-circle-fill me-2"></i> <?php echo htmlspecialchars($success_message); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>
 
 <?php if (isset($error_message)): ?>
     <div class="alert alert-danger alert-custom alert-dismissible fade show" role="alert">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i> <?php echo $error_message; ?>
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> <?php echo htmlspecialchars($error_message); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>

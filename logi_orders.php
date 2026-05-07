@@ -300,7 +300,7 @@ input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
 
     <?php if (isset($success_message)): ?>
         <div class="alert alert-success alert-custom alert-dismissible fade show" role="alert">
-            <i class="fas fa-check-circle me-2"></i> <?php echo $success_message; ?>
+            <i class="fas fa-check-circle me-2"></i> <?php echo htmlspecialchars($success_message); ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>

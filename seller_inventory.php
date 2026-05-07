@@ -462,14 +462,14 @@ body {
 
 <?php if ($message): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        <?php echo $message; ?>
+        <?php echo htmlspecialchars($message); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>
 
 <?php if ($error): ?>
     <div class="alert alert-danger alert-dismissible fade show" role="alert">
-        <?php echo $error; ?>
+        <?php echo htmlspecialchars($error); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>
@@ -742,6 +742,7 @@ body {
       </div>
       <form method="POST">
         <div class="modal-body">
+          <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
           <input type="hidden" name="variant_id" id="restock_variant_id">
           
           <div class="mb-3">

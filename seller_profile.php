@@ -255,6 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $emailSent = sendOTPEmail($user_email, $otp, $fullName);
                         
                         if ($emailSent) {
+                            log_audit_action('otp_request', 'Seller Security', 'User requested password change OTP');
                             $_SESSION['otp_sent'] = true;
                             $_SESSION['otp_email'] = $user_email;
                             $_SESSION['otp_code'] = $otp; // Store OTP in session for debugging
@@ -300,6 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if ($storedOtp === $entered_otp) {
                         if ($currentTime <= $expiryTime) {
+                            log_audit_action('otp_verify', 'Seller Security', 'User verified password change OTP');
                             $_SESSION['otp_verified'] = true;
                             $_SESSION['verified_otp'] = $entered_otp;
                             $otpVerified = true;
@@ -401,6 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $updateStmt->bind_param("si", $new_hash, $user_id);
                             
                             if ($updateStmt->execute()) {
+                                log_audit_action('update', 'Seller Security', 'User changed their password');
                                 $message = "✓ Password changed successfully! You will be redirected to login.";
                                 
                                 // Send confirmation email
@@ -491,6 +494,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     if ($updateSellerStmt->execute()) {
                         $conn->commit();
+                        log_audit_action('update', 'Seller Profile', 'User updated their seller profile information');
                         $message = "Profile updated successfully!";
                         $_SESSION['first_name'] = $first_name;
                         $_SESSION['last_name'] = $last_name;
@@ -827,13 +831,13 @@ function toggleSidebar() { document.getElementById("sidebar").classList.toggle("
         <p class="text-muted">Manage your store profile, personal information, and business details.</p>
         <?php if ($message): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="bi bi-check-circle-fill"></i> <?php echo $message; ?>
+                <i class="bi bi-check-circle-fill"></i> <?php echo htmlspecialchars($message); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $error; ?>
+                <i class="bi bi-exclamation-triangle-fill"></i> <?php echo htmlspecialchars($error); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>

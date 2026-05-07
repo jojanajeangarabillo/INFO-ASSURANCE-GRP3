@@ -209,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </p>
 
         <?php if (isset($error))
-          echo "<p class='text-red-500 text-center mt-4'>$error</p>"; ?>
+          echo "<p class='text-red-500 text-center mt-4'>" . htmlspecialchars($error) . "</p>"; ?>
       </div>
 
       <!-- CARD -->
