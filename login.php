@@ -205,8 +205,7 @@ if (isset($_POST['login'])) {
 
             <div class="flex justify-between items-center pt-3 text-sm">
               <label class="flex items-center text-gray-600">
-                <input type="checkbox" class="mr-2 rounded border-gray-300 text-brand-500 focus:ring-brand-500">
-                Remember me
+               
               </label>
 
               <a href="forgotpass.php" class="font-semibold text-brand-900 hover:text-brand-500 transition">
