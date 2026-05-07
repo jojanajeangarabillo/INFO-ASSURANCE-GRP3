@@ -39,34 +39,12 @@ function decryptContactNumber($encrypted, $fallback = '') {
     if (empty($encrypted)) {
         return $fallback;
     }
-    try {
-        $cipher = "AES-256-CBC";
-        $key = $_ENV['ENCRYPTION_KEY'] ?? 'default-encryption-key-32chars!!';
-        $iv_length = openssl_cipher_iv_length($cipher);
-        $decoded = base64_decode($encrypted);
-        if ($decoded === false || strlen($decoded) < $iv_length) {
-            return $fallback;
-        }
-        $iv = substr($decoded, 0, $iv_length);
-        $encrypted_data = substr($decoded, $iv_length);
-        $decrypted = openssl_decrypt($encrypted_data, $cipher, $key, OPENSSL_RAW_DATA, $iv);
-        return $decrypted !== false ? $decrypted : $fallback;
-    } catch (Exception $e) {
-        error_log("Decryption error: " . $e->getMessage());
-        return $fallback;
-    }
+    return decrypt_data($encrypted);
 }
 
 // Helper: Encrypt contact number
 function encryptContactNumber($plaintext) {
-    if (empty($plaintext)) {
-        return null;
-    }
-    $cipher = "AES-256-CBC";
-    $key = $_ENV['ENCRYPTION_KEY'] ?? 'default-encryption-key-32chars!!';
-    $iv = random_bytes(openssl_cipher_iv_length($cipher));
-    $encrypted = openssl_encrypt($plaintext, $cipher, $key, OPENSSL_RAW_DATA, $iv);
-    return base64_encode($iv . $encrypted);
+    return encrypt_data($plaintext);
 }
 
 // Generate OTP
