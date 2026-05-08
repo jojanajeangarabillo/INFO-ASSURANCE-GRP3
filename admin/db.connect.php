@@ -21,7 +21,7 @@ try {
 
 // Encryption key - Must be exactly 32 bytes for AES-256-CBC
 // Use a proper 32-byte key (you can generate one via: echo bin2hex(random_bytes(32));)
-define('ENCRYPTION_KEY', 'my_secure_32_byte_key_12345678'); // Now exactly 32 bytes (added '8')
+define('ENCRYPTION_KEY', 'my_secure_32_byte_key_1234567');
 define('ENCRYPTION_METHOD', 'AES-256-CBC');
 
 function encrypt_data($data) {

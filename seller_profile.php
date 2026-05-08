@@ -188,8 +188,9 @@ if (!empty($seller['full_name'])) {
     $fullName = trim($firstName . ' ' . $lastName);
 }
 
-// Decrypt contact number
+// Decrypt contact number and tin id
 $contactNumberDecrypted = decryptContactNumber($seller['contact_number'] ?? '', '');
+$tinIdDecrypted = decrypt_data($seller['tin_id'] ?? '');
 
 // Check session for OTP status - Initialize if not set
 if (!isset($_SESSION['otp_sent'])) {
@@ -489,6 +490,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     // Update seller table
                     $encrypted_contact = !empty($contact_number_raw) ? encryptContactNumber($contact_number_raw) : $seller['contact_number'];
+                    $encrypted_tin_id = !empty($tin_id) ? encrypt_data($tin_id) : $seller['tin_id'];
                     
                     $updateSellerStmt = $conn->prepare("
                         UPDATE seller 
@@ -497,7 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             shop_address = COALESCE(NULLIF(?, ''), shop_address),
                             contact_number = COALESCE(?, contact_number),
                             business_category = COALESCE(NULLIF(?, ''), business_category),
-                            tin_id = COALESCE(NULLIF(?, ''), tin_id),
+                            tin_id = COALESCE(?, tin_id),
                             age = COALESCE(?, age),
                             additional_info = COALESCE(NULLIF(?, ''), additional_info)
                         WHERE user_id = ?
@@ -509,7 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $shop_address, 
                         $encrypted_contact,
                         $business_category,
-                        $tin_id,
+                        $encrypted_tin_id,
                         $age,
                         $additional_info,
                         $user_id
@@ -931,14 +933,14 @@ function toggleSidebar() {
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">TIN ID</label>
-                        <input type="text" name="tin_id" class="form-control" value="<?php echo htmlspecialchars($seller['tin_id'] ?? ''); ?>">
+                        <input type="text" name="tin_id" class="form-control" value="<?php echo htmlspecialchars($tinIdDecrypted); ?>">
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">BUSINESS CATEGORY *</label>
                         <select name="business_category" class="form-select" required>
                             <option value="">Select category</option>
                             <?php 
-                            $cats = ['Men', 'Women', 'Electronics', 'Furniture', 'Food', 'Beauty', 'Health', 'Sports', 'Toys', 'Books', 'Automotive', 'Pets']; 
+                            $cats = ['Men', 'Women']; 
                             foreach($cats as $c): ?>
                             <option value="<?php echo $c; ?>" <?php echo ($seller['business_category'] ?? '') === $c ? 'selected' : ''; ?>><?php echo $c; ?></option>
                             <?php endforeach; ?>

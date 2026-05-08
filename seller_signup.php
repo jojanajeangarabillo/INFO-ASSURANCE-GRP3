@@ -145,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $shopDescription = "Welcome to " . $form['shop_name'] . "!";
 
                     $encryptedContact = encrypt_data($form['contact_number']);
+                    $encryptedTinId = encrypt_data($form['tin_id']);
 
                     /* INSERT SELLER */
                     $stmt = $conn->prepare("
@@ -172,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $form['shop_name'],
                         $shopDescription,
                         $form['business_category'],
-                        $form['tin_id'],
+                        $encryptedTinId,
                         $form['age'],
                         $form['shop_address'],
                         $encryptedContact,

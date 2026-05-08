@@ -161,12 +161,8 @@ $roleNames = [1 => 'Admin', 2 => 'Customer', 3 => 'Seller', 4 => 'Dual', 5 => 'L
                 </div>
                 <h1 class="text-2xl font-bold text-brand-900">
                     Two-Factor Authentication
-                    <span class="role-badge role-<?php echo strtolower($roleNames[$role_id] ?? 'user'); ?>">
-                        <?php echo $roleNames[$role_id] ?? 'User'; ?>
-                    </span>
                 </h1>
-                <p class="text-gray-500 mt-2 text-sm">Welcome back, <?php echo htmlspecialchars($fullName ?: $username); ?>!</p>
-                <p class="text-gray-500 text-sm">Enter the 6-digit code from your authenticator app</p>
+                <p class="text-gray-500 text-sm mt-2">Enter the 6-digit code from your authenticator app</p>
             </div>
 
             <?php if ($error): ?>
@@ -186,10 +182,7 @@ $roleNames = [1 => 'Admin', 2 => 'Customer', 3 => 'Seller', 4 => 'Dual', 5 => 'L
                         title="Please enter 6-digit code"
                         autocomplete="off"
                         required>
-                    <div class="countdown" id="countdown"></div>
-                    <div class="resend-link" id="resendLink">
-                        <a href="resend_mfa.php">Didn't receive a code? Resend</a>
-                    </div>
+
                 </div>
 
                 <button type="submit" 
@@ -199,13 +192,6 @@ $roleNames = [1 => 'Admin', 2 => 'Customer', 3 => 'Seller', 4 => 'Dual', 5 => 'L
             </form>
 
             <div class="mt-6 text-center space-y-3">
-                <p class="text-sm text-gray-500">
-                    Having trouble?
-                    <a href="recovery_codes.php" class="text-brand-900 hover:underline">Use recovery code</a>
-                </p>
-                <p class="text-xs text-gray-400">
-                    This is an additional security measure to protect your account.
-                </p>
                 <a href="login.php" class="text-sm text-gray-500 hover:text-brand-900 transition underline block mt-4">
                     ← Back to login
                 </a>

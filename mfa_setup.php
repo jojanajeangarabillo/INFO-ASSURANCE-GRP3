@@ -137,13 +137,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
                 <h1 class="text-2xl font-bold text-brand-900">
                     Setup MFA
-                    <?php 
-                    $roleNames = [1 => 'Admin', 2 => 'Customer', 3 => 'Seller', 4 => 'Dual', 5 => 'Logistics', 6 => 'Driver'];
-                    if (isset($role_id)): ?>
-                    <span class="role-badge role-<?php echo strtolower($roleNames[$role_id] ?? ''); ?>">
-                        <?php echo $roleNames[$role_id] ?? 'User'; ?>
-                    </span>
-                    <?php endif; ?>
                 </h1>
                 <p class="text-gray-500 mt-2 text-sm">Scan the QR code with your Google Authenticator app</p>
             </div>
@@ -185,10 +178,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="mt-6 text-center">
                 <hr class="my-4">
                 <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                    <p class="text-xs text-yellow-800">
-                        <strong>⚠️ Important:</strong> Save your recovery codes in a safe place. 
-                        You'll need them if you lose access to your authenticator app.
-                    </p>
                 </div>
                 <a href="login.php" class="text-sm text-gray-500 hover:text-brand-900 transition underline">Cancel and go back</a>
             </div>
