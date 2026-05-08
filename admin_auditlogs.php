@@ -22,85 +22,136 @@ if (!isset($_SESSION['last_activity'])) {
 
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
+// Number of items per page
+$items_per_page = 10;
+
+// Function to build pagination URL
+function buildPaginationUrl($tab, $page, $date_param = '') {
+    $params = ['tab' => $tab, 'page' => $page];
+    if (!empty($date_param)) {
+        $params[$date_param] = $_GET[$date_param] ?? '';
+    }
+    return '?' . http_build_query($params);
+}
+
 // Get date filters from GET parameters (single date)
 $login_date = isset($_GET['login_date']) ? $_GET['login_date'] : '';
 $audit_date = isset($_GET['audit_date']) ? $_GET['audit_date'] : '';
 $locked_date = isset($_GET['locked_date']) ? $_GET['locked_date'] : '';
 
-// Fetch login history with date filter
-if (!empty($login_date)) {
-    $loginHistoryStmt = $conn->prepare("
-        SELECT lh.*, u.username 
-        FROM login_history lh 
-        LEFT JOIN user u ON lh.user_id = u.user_id 
-        WHERE DATE(lh.login_time) = ?
-        ORDER BY lh.login_time DESC 
-        LIMIT 100
-    ");
-    $loginHistoryStmt->bind_param("s", $login_date);
-    $loginHistoryStmt->execute();
-    $loginHistory = $loginHistoryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-} else {
-    $loginHistoryStmt = $conn->query("
-        SELECT lh.*, u.username 
-        FROM login_history lh 
-        LEFT JOIN user u ON lh.user_id = u.user_id 
-        ORDER BY lh.login_time DESC 
-        LIMIT 100
-    ");
-    $loginHistory = $loginHistoryStmt->fetch_all(MYSQLI_ASSOC);
+// Get current page numbers
+$login_page = isset($_GET['page']) && ($_GET['tab'] ?? '') === 'loginHistory' ? max(1, (int)$_GET['page']) : 1;
+$audit_page = isset($_GET['page']) && ($_GET['tab'] ?? '') === 'auditLog' ? max(1, (int)$_GET['page']) : 1;
+$locked_page = isset($_GET['page']) && ($_GET['tab'] ?? '') === 'lockedAccounts' ? max(1, (int)$_GET['page']) : 1;
+
+// Function to fetch paginated data
+function fetchPaginatedData($conn, $table, $date_column, $date_filter, $current_page, $items_per_page, $extra_join = '') {
+    $offset = ($current_page - 1) * $items_per_page;
+    
+    // Count total items
+    $count_query = "SELECT COUNT(*) as total FROM {$table} t";
+    if ($extra_join) {
+        $count_query .= " " . $extra_join;
+    }
+    if (!empty($date_filter)) {
+        $count_query .= " WHERE DATE(t.{$date_column}) = ?";
+    }
+    
+    if (!empty($date_filter)) {
+        $count_stmt = $conn->prepare($count_query);
+        $count_stmt->bind_param("s", $date_filter);
+        $count_stmt->execute();
+        $total_items = $count_stmt->get_result()->fetch_assoc()['total'];
+    } else {
+        $count_result = $conn->query($count_query);
+        $total_items = $count_result->fetch_assoc()['total'];
+    }
+    
+    $total_pages = ceil($total_items / $items_per_page);
+    
+    // Fetch data for current page
+    $data_query = "SELECT t.*, u.username FROM {$table} t LEFT JOIN user u ON t.user_id = u.user_id";
+    if (!empty($date_filter)) {
+        $data_query .= " WHERE DATE(t.{$date_column}) = ?";
+    }
+    $data_query .= " ORDER BY t.{$date_column} DESC LIMIT ? OFFSET ?";
+    
+    if (!empty($date_filter)) {
+        $data_stmt = $conn->prepare($data_query);
+        $data_stmt->bind_param("sii", $date_filter, $items_per_page, $offset);
+    } else {
+        $data_stmt = $conn->prepare($data_query);
+        $data_stmt->bind_param("ii", $items_per_page, $offset);
+    }
+    $data_stmt->execute();
+    $data = $data_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    
+    return [
+        'data' => $data,
+        'total_pages' => $total_pages,
+        'current_page' => $current_page,
+        'total_items' => $total_items
+    ];
 }
 
-// Fetch audit log with date filter
-if (!empty($audit_date)) {
-    $auditLogStmt = $conn->prepare("
-        SELECT al.*, u.username 
-        FROM audit_log al 
-        LEFT JOIN user u ON al.user_id = u.user_id 
-        WHERE DATE(al.created_at) = ?
-        ORDER BY al.created_at DESC 
-        LIMIT 100
-    ");
-    $auditLogStmt->bind_param("s", $audit_date);
-    $auditLogStmt->execute();
-    $auditLog = $auditLogStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-} else {
-    $auditLogStmt = $conn->query("
-        SELECT al.*, u.username 
-        FROM audit_log al 
-        LEFT JOIN user u ON al.user_id = u.user_id 
-        ORDER BY al.created_at DESC 
-        LIMIT 100
-    ");
-    $auditLog = $auditLogStmt->fetch_all(MYSQLI_ASSOC);
-}
+// Fetch login history
+$loginData = fetchPaginatedData($conn, 'login_history', 'login_time', $login_date, $login_page, $items_per_page);
+$loginHistory = $loginData['data'];
+$login_total_pages = $loginData['total_pages'];
+$login_current_page = $loginData['current_page'];
+$login_total_items = $loginData['total_items'];
 
-// Fetch locked accounts with date filter
-if (!empty($locked_date)) {
-    $lockedAccsStmt = $conn->prepare("
-        SELECT la.*, u.username 
-        FROM locked_accs la 
-        LEFT JOIN user u ON la.user_id = u.user_id 
-        WHERE DATE(la.date_time) = ?
-        ORDER BY la.date_time DESC 
-        LIMIT 100
-    ");
-    $lockedAccsStmt->bind_param("s", $locked_date);
-    $lockedAccsStmt->execute();
-    $lockedAccs = $lockedAccsStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-} else {
-    $lockedAccsStmt = $conn->query("
-        SELECT la.*, u.username 
-        FROM locked_accs la 
-        LEFT JOIN user u ON la.user_id = u.user_id 
-        ORDER BY la.date_time DESC 
-        LIMIT 100
-    ");
-    $lockedAccs = $lockedAccsStmt->fetch_all(MYSQLI_ASSOC);
-}
+// Fetch audit log
+$auditData = fetchPaginatedData($conn, 'audit_log', 'created_at', $audit_date, $audit_page, $items_per_page);
+$auditLog = $auditData['data'];
+$audit_total_pages = $auditData['total_pages'];
+$audit_current_page = $auditData['current_page'];
+$audit_total_items = $auditData['total_items'];
+
+// Fetch locked accounts
+$lockedData = fetchPaginatedData($conn, 'locked_accs', 'date_time', $locked_date, $locked_page, $items_per_page);
+$lockedAccs = $lockedData['data'];
+$locked_total_pages = $lockedData['total_pages'];
+$locked_current_page = $lockedData['current_page'];
+$locked_total_items = $lockedData['total_items'];
 
 // Get current active tab from URL parameter
 $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'loginHistory';
+
+// Function to render pagination
+function renderPagination($current_page, $total_pages, $tab, $date_param = '') {
+    if ($total_pages <= 1) {
+        return '';
+    }
+    
+    $html = '<div class="pagination">';
+    
+    // Previous button
+    if ($current_page > 1) {
+        $html .= '<a href="' . buildPaginationUrl($tab, $current_page - 1, $date_param) . '">&laquo; Previous</a>';
+    } else {
+        $html .= '<span class="disabled">&laquo; Previous</span>';
+    }
+    
+    // Page numbers
+    for ($i = 1; $i <= $total_pages; $i++) {
+        if ($i == $current_page) {
+            $html .= '<span class="active">' . $i . '</span>';
+        } else {
+            $html .= '<a href="' . buildPaginationUrl($tab, $i, $date_param) . '">' . $i . '</a>';
+        }
+    }
+    
+    // Next button
+    if ($current_page < $total_pages) {
+        $html .= '<a href="' . buildPaginationUrl($tab, $current_page + 1, $date_param) . '">Next &raquo;</a>';
+    } else {
+        $html .= '<span class="disabled">Next &raquo;</span>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -270,6 +321,50 @@ th {
   color: #610C27;
 }
 
+/* Pagination styles */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.pagination a, .pagination span {
+  padding: 8px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #610C27;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.pagination a:hover {
+  background: #f9dbe5;
+  border-color: #a61b4a;
+}
+
+.pagination .active {
+  background: #a61b4a;
+  color: white;
+  border-color: #a61b4a;
+}
+
+.pagination .disabled {
+  color: #999;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.pagination-info {
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
 @media (max-width: 768px) {
   .container { margin-left: 0; padding: 20px; }
 }
@@ -419,6 +514,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php endif; ?>
       </tbody>
     </table>
+    <?php echo renderPagination($login_current_page, $login_total_pages, 'loginHistory', 'login_date'); ?>
+    <div class="pagination-info">
+        Showing page <?php echo $login_current_page; ?> of <?php echo $login_total_pages; ?> (<?php echo $login_total_items; ?> total records)
+    </div>
   </div>
 </div>
 
@@ -480,6 +579,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php endif; ?>
       </tbody>
     </table>
+    <?php echo renderPagination($audit_current_page, $audit_total_pages, 'auditLog', 'audit_date'); ?>
+    <div class="pagination-info">
+        Showing page <?php echo $audit_current_page; ?> of <?php echo $audit_total_pages; ?> (<?php echo $audit_total_items; ?> total records)
+    </div>
   </div>
 </div>
 
@@ -527,6 +630,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php endif; ?>
       </tbody>
     </table>
+    <?php echo renderPagination($locked_current_page, $locked_total_pages, 'lockedAccounts', 'locked_date'); ?>
+    <div class="pagination-info">
+        Showing page <?php echo $locked_current_page; ?> of <?php echo $locked_total_pages; ?> (<?php echo $locked_total_items; ?> total records)
+    </div>
   </div>
 </div>
 

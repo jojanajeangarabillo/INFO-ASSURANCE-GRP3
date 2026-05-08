@@ -29,6 +29,53 @@ if (!isset($_SESSION['last_activity'])) {
 
 $timeout_ms = $timeout_minutes * 60 * 1000;
 
+// Number of items per page
+$items_per_page = 10;
+
+// Get current page
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$offset = ($page - 1) * $items_per_page;
+
+// Function to build pagination URL
+function buildUsersPaginationUrl($page) {
+    return '?page=' . $page;
+}
+
+// Function to render pagination
+function renderUsersPagination($current_page, $total_pages) {
+    if ($total_pages <= 1) {
+        return '';
+    }
+    
+    $html = '<div class="pagination">';
+    
+    // Previous button
+    if ($current_page > 1) {
+        $html .= '<a href="' . buildUsersPaginationUrl($current_page - 1) . '">&laquo; Previous</a>';
+    } else {
+        $html .= '<span class="disabled">&laquo; Previous</span>';
+    }
+    
+    // Page numbers
+    for ($i = 1; $i <= $total_pages; $i++) {
+        if ($i == $current_page) {
+            $html .= '<span class="active">' . $i . '</span>';
+        } else {
+            $html .= '<a href="' . buildUsersPaginationUrl($i) . '">' . $i . '</a>';
+        }
+    }
+    
+    // Next button
+    if ($current_page < $total_pages) {
+        $html .= '<a href="' . buildUsersPaginationUrl($current_page + 1) . '">Next &raquo;</a>';
+    } else {
+        $html .= '<span class="disabled">Next &raquo;</span>';
+    }
+    
+    $html .= '</div>';
+    return $html;
+}
+
 /* =========================
    HANDLE LOCK/UNLOCK ACTIONS
 ========================= */
@@ -473,18 +520,26 @@ function getRejectionEmail($seller) {
 /* =========================
    FETCH DATA - FIXED PENDING SELLERS QUERY
 ========================= */
-// Fetch All Users
-$usersStmt = $conn->query("
+// Count total users
+$countUsersStmt = $conn->query("SELECT COUNT(*) as total FROM user");
+$total_users = $countUsersStmt->fetch_assoc()['total'];
+$total_pages = ceil($total_users / $items_per_page);
+
+// Fetch All Users with pagination
+$usersStmt = $conn->prepare("
     SELECT u.user_id, u.username, u.email, u.is_locked, u.attempts, r.role_name
     FROM user u 
     JOIN role r ON u.role_id = r.role_id
     ORDER BY u.user_id DESC
+    LIMIT ? OFFSET ?
 ");
+$usersStmt->bind_param("ii", $items_per_page, $offset);
+$usersStmt->execute();
 
 if (!$usersStmt) {
     die("Error fetching users: " . $conn->error);
 }
-$users = $usersStmt->fetch_all(MYSQLI_ASSOC);
+$users = $usersStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Fetch Pending Sellers - FIXED: Added error checking and proper JOIN
 $pendingQuery = "
@@ -612,6 +667,50 @@ th {
 .success { background: #d1fae5; color: #065f46; }
 .warning { background: #fef3c7; color: #92400e; }
 .danger { background: #fee2e2; color: #991b1b; }
+
+/* Pagination styles */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.pagination a, .pagination span {
+  padding: 8px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #610C27;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.pagination a:hover {
+  background: #f9dbe5;
+  border-color: #a61b4a;
+}
+
+.pagination .active {
+  background: #a61b4a;
+  color: white;
+  border-color: #a61b4a;
+}
+
+.pagination .disabled {
+  color: #999;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.pagination-info {
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+  margin-top: 10px;
+}
 
 .application-badge {
   display: inline-block;
@@ -910,6 +1009,10 @@ function toggleSidebar() {
 <?php endforeach; ?>
 </tbody>
 </table>
+    <?php echo renderUsersPagination($page, $total_pages); ?>
+    <div class="pagination-info">
+        Showing page <?php echo $page; ?> of <?php echo $total_pages; ?> (<?php echo $total_users; ?> total users)
+    </div>
 </div>
 
 </div>
