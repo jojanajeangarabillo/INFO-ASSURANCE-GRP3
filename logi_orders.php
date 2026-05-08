@@ -213,6 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $assign_stmt->bind_param("iii", $driver_id, $order_id, $user_id);
                 
                 if ($assign_stmt->execute()) {
+                    log_audit_action('assign_driver', 'Logistics Orders', 'Driver ID ' . $driver_id . ' assigned to Order #' . $order_id);
                     // Get driver info for notification
                     $driver_info_stmt = $conn->prepare("
                         SELECT u.first_name, u.last_name, u.email, u.username, u.user_id as driver_user_id

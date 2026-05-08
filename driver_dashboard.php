@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $password_message = 'Password changed successfully!';
                 $password_message_type = 'success';
                 
+                log_audit_action('password_change', 'Driver Profile', 'Driver changed their password');
                 // Send notification about password change
                 sendNotification($conn, $driver_user_id, 'Password Changed', 'Your password has been successfully changed. If you did not make this change, please contact support immediately.', 'security', null);
                 
@@ -183,6 +184,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $update_tracking->execute();
         $update_tracking->close();
         
+        log_audit_action('accept_assignment', 'Driver Dashboard', 'Driver accepted delivery for Order #' . $orderInfo['order_number']);
+        
         // Send IN-APP notification to driver (confirmation)
         $driver_title = "Delivery Accepted - Order #{$orderInfo['order_number']}";
         $driver_message = "You have successfully accepted delivery for Order #{$orderInfo['order_number']} to {$orderInfo['customer_name']}. Please proceed to pick up the package.";
@@ -256,6 +259,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $update_tracking->execute();
             $update_tracking->close();
             
+            log_audit_action('update_status', 'Driver Dashboard', 'Driver updated Order #' . $orderNumber . ' status to ' . $status_message);
+            
             // Send IN-APP notification to driver (status update confirmation)
             $driver_title = "Status Updated - Order #{$orderNumber}";
             $driver_message = "Order #{$orderNumber} has been marked as {$status_message}.";
@@ -321,6 +326,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $update_driver->bind_param("i", $driver_id);
         $update_driver->execute();
         $update_driver->close();
+        
+        log_audit_action('complete_delivery', 'Driver Dashboard', 'Driver completed delivery for Order #' . $orderInfo['order_number']);
         
         // Send IN-APP notification to driver (completion confirmation)
         $driver_title = "Delivery Completed! - Order #{$orderInfo['order_number']}";
