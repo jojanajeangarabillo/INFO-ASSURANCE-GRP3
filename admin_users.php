@@ -155,7 +155,7 @@ if (isset($_POST['add_logistic'])) {
             otp_code, otp_expiry, verification_token, token_expiry, mfa_secret
         ) VALUES (?, ?, ?, 5, 1, 1, ?, ?, ?, ?, ?)
     ");
-    $insertStmt->bind_param("ssssssss", 
+    $insertStmt->bind_param("sssssssss", 
         $username, $email, $passwordHash, 
         $empty, $empty_expiry, $empty, $empty_expiry, $empty
     );
@@ -204,7 +204,7 @@ if (isset($_POST['add_logistic'])) {
 }
 
 /* =========================
-   HANDLE APPROVE / REJECT
+   HANDLE APPROVE / REJECT - FIXED VERSION
 ========================= */
 if (isset($_GET['seller_action'], $_GET['id'])) {
     $sellerId = (int) $_GET['id'];
@@ -212,7 +212,7 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
 
     if ($action === 'approve') {
         $sellerStmt = $conn->prepare("
-            SELECT s.*, u.user_id, u.username, u.email, u.role_id, 
+            SELECT s.*, u.user_id, u.username, u.email, u.role_id, u.password, u.first_name, u.last_name,
                    (SELECT COUNT(*) FROM customer WHERE user_id = u.user_id) as has_customer
             FROM seller s 
             JOIN user u ON s.user_id = u.user_id 
@@ -228,64 +228,172 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
             
             $newRole = null;
             $roleType = '';
+            $isPureSeller = false;
             
+            // Determine if this is a pure seller or dual role
             if ($hasCustomerRecord || $currentRoleId == 2) {
                 $newRole = 4;
                 $roleType = 'Dual (Customer & Seller)';
+                $isPureSeller = false;
             } else {
                 $newRole = 3;
                 $roleType = 'Seller Only';
+                $isPureSeller = true;
             }
             
+            // Generate temporary password for pure sellers
+            $tempPassword = null;
+            $passwordHash = null;
+            $newUsername = null;
+            
+            if ($isPureSeller) {
+                // Generate a secure random password (12 characters for better security)
+                $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+                $tempPassword = '';
+                for ($i = 0; $i < 12; $i++) {
+                    $tempPassword .= $chars[random_int(0, strlen($chars) - 1)];
+                }
+                $passwordHash = password_hash($tempPassword, PASSWORD_DEFAULT);
+                
+                // Generate username from email or full name
+                if (!empty($seller['email'])) {
+                    $baseUsername = preg_replace('/@.*$/', '', $seller['email']);
+                    $baseUsername = preg_replace('/[^a-z0-9]/i', '_', $baseUsername);
+                } else {
+                    $baseUsername = preg_replace('/[^a-z0-9]/i', '_', strtolower($seller['shop_name']));
+                }
+                
+                // Ensure username is unique
+                $newUsername = $baseUsername;
+                $counter = 1;
+                $checkStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ?");
+                $checkStmt->bind_param("s", $newUsername);
+                $checkStmt->execute();
+                while ($checkStmt->get_result()->num_rows > 0) {
+                    $newUsername = $baseUsername . '_' . $counter;
+                    $checkStmt->bind_param("s", $newUsername);
+                    $checkStmt->execute();
+                    $counter++;
+                }
+                
+                // Debug: Log the generated password
+                error_log("Generated temp password for seller ID {$sellerId}: {$tempPassword}");
+                error_log("Generated username: {$newUsername}");
+                error_log("Password hash: " . substr($passwordHash, 0, 20) . "...");
+            }
+            
+            // Update seller approval status
             $stmt = $conn->prepare("UPDATE seller SET is_approved = 1 WHERE seller_id = ?");
             $stmt->bind_param("i", $sellerId);
             $stmt->execute();
             
-            if ($newRole && $currentRoleId != $newRole) {
-                $updateRoleStmt = $conn->prepare("UPDATE user SET role_id = ? WHERE user_id = ?");
-                $updateRoleStmt->bind_param("ii", $newRole, $seller['user_id']);
-                $updateRoleStmt->execute();
+            // Split full name into first and last name if available
+            $firstName = null;
+            $lastName = null;
+            if (!empty($seller['full_name'])) {
+                $nameParts = explode(' ', $seller['full_name'], 2);
+                $firstName = $nameParts[0];
+                $lastName = isset($nameParts[1]) ? $nameParts[1] : '';
+            } else if (!empty($seller['first_name'])) {
+                $firstName = $seller['first_name'];
+                $lastName = $seller['last_name'] ?? '';
             }
             
-            if (!$hasCustomerRecord && $currentRoleId == 0) {
-                $newUsername = preg_replace('/[^a-z0-9]/i', '_', strtolower($seller['shop_name']));
-                $checkUserStmt = $conn->prepare("SELECT user_id FROM user WHERE username = ? AND user_id != ? LIMIT 1");
-                $checkUserStmt->bind_param("si", $newUsername, $seller['user_id']);
-                $checkUserStmt->execute();
-                if ($checkUserStmt->get_result()->num_rows === 0) {
-                    $updateUsernameStmt = $conn->prepare("UPDATE user SET username = ? WHERE user_id = ?");
-                    $updateUsernameStmt->bind_param("si", $newUsername, $seller['user_id']);
-                    $updateUsernameStmt->execute();
+            // Update user record - FIXED: Ensure proper field updates
+            if ($isPureSeller && $passwordHash && $newUsername) {
+                // For pure sellers: Update all necessary fields
+                if ($firstName && $lastName) {
+                    $updateUserStmt = $conn->prepare("
+                        UPDATE user 
+                        SET role_id = ?, 
+                            username = ?, 
+                            password = ?, 
+                            first_name = ?, 
+                            last_name = ?,
+                            is_activated = 1,
+                            attempts = 0,
+                            is_locked = 0
+                        WHERE user_id = ?
+                    ");
+                    $updateUserStmt->bind_param("issssi", $newRole, $newUsername, $passwordHash, $firstName, $lastName, $seller['user_id']);
+                } else {
+                    $updateUserStmt = $conn->prepare("
+                        UPDATE user 
+                        SET role_id = ?, 
+                            username = ?, 
+                            password = ?,
+                            is_activated = 1,
+                            attempts = 0,
+                            is_locked = 0
+                        WHERE user_id = ?
+                    ");
+                    $updateUserStmt->bind_param("issi", $newRole, $newUsername, $passwordHash, $seller['user_id']);
                 }
+                
+                if ($updateUserStmt->execute()) {
+                    error_log("Successfully updated user ID {$seller['user_id']} with new role {$newRole}, username {$newUsername}");
+                    
+                    // Verify the password was saved correctly
+                    $verifyStmt = $conn->prepare("SELECT password FROM user WHERE user_id = ?");
+                    $verifyStmt->bind_param("i", $seller['user_id']);
+                    $verifyStmt->execute();
+                    $verifyResult = $verifyStmt->get_result()->fetch_assoc();
+                    
+                    if ($verifyResult && password_verify($tempPassword, $verifyResult['password'])) {
+                        error_log("Password verification SUCCESS for user ID {$seller['user_id']}");
+                    } else {
+                        error_log("Password verification FAILED for user ID {$seller['user_id']}");
+                    }
+                } else {
+                    error_log("Failed to update user: " . $updateUserStmt->error);
+                }
+            } elseif ($newRole && $currentRoleId != $newRole) {
+                // For dual role: Only update role
+                $updateUserStmt = $conn->prepare("UPDATE user SET role_id = ?, is_activated = 1 WHERE user_id = ?");
+                $updateUserStmt->bind_param("ii", $newRole, $seller['user_id']);
+                $updateUserStmt->execute();
             }
             
-            if (!$hasCustomerRecord) {
+            // Create customer record for pure sellers (if needed)
+            if ($isPureSeller && !$hasCustomerRecord) {
+                $fullName = $seller['full_name'] ?? ($firstName && $lastName ? $firstName . ' ' . $lastName : $seller['shop_name']);
+                $contactNumber = !empty($seller['contact_number']) ? $seller['contact_number'] : '';
+                
                 $insertCustomerStmt = $conn->prepare("
                     INSERT INTO customer (user_id, full_name, contact_number, address_line, city, region, postal_code)
                     VALUES (?, ?, ?, '', '', '', '')
                 ");
-                $fullName = $seller['full_name'] ?? $seller['shop_name'];
-                $contactNumber = encrypt_data($seller['contact_number'] ?? '');
                 $insertCustomerStmt->bind_param("iss", $seller['user_id'], $fullName, $contactNumber);
                 $insertCustomerStmt->execute();
             }
             
-            if ($roleType == 'Dual (Customer & Seller)') {
-                $emailBody = getDualRoleEmail($seller);
+            // Send appropriate email with login credentials
+            if ($isPureSeller) {
+                // For pure sellers: include username, temporary password, and login link
+                $emailBody = getSellerOnlyEmail($seller, $newUsername, $tempPassword);
+                $subject = "Welcome to J3RS Marketplace - Your Seller Account Has Been Approved!";
             } else {
-                $emailBody = getSellerOnlyEmail($seller);
+                // For dual role: just confirmation email
+                $emailBody = getDualRoleEmail($seller);
+                $subject = "Your Seller Application Has Been Approved - Account Upgraded!";
             }
-            send_email($seller['email'], "Your Seller Application Has Been Approved!", $emailBody);
+            
+            $emailSent = send_email($seller['email'], $subject, $emailBody);
+            
+            if (!$emailSent) {
+                error_log("Failed to send email to {$seller['email']}");
+            }
             
             log_audit_action('approve', 'Seller Applications', "Admin approved seller application for shop: " . $seller['shop_name']);
             
+            // Create notification
             $notifStmt = $conn->prepare("INSERT INTO notification (user_id, title, message, is_read, created_at) VALUES (?, ?, ?, 0, NOW())");
             if ($roleType == 'Dual (Customer & Seller)') {
                 $notifTitle = "Seller Application Approved - Account Upgraded to Dual Role";
                 $notifMessage = "Congratulations! Your account has been upgraded to Dual Role. You can now switch between Customer and Seller modes using the 'Switch Role' button.";
             } else {
-                $notifTitle = "Seller Application Approved";
-                $notifMessage = "Congratulations! Your seller account has been approved. You can now start selling on J3RS Marketplace.";
+                $notifTitle = "Seller Application Approved - Account Created";
+                $notifMessage = "Congratulations! Your seller account has been approved. Your login credentials have been sent to your email.\n\nUsername: {$newUsername}\nTemporary Password: {$tempPassword}\n\nPlease login and change your password immediately.";
             }
             $notifStmt->bind_param("iss", $seller['user_id'], $notifTitle, $notifMessage);
             $notifStmt->execute();
@@ -293,6 +401,9 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
         
         if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
             echo json_encode(['success' => true, 'message' => "Seller approved successfully as $roleType"]);
+            exit;
+        } else {
+            header("Location: admin_users.php?msg=approve_success");
             exit;
         }
     }
@@ -332,6 +443,9 @@ if (isset($_GET['seller_action'], $_GET['id'])) {
         if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
             echo json_encode(['success' => true, 'message' => 'Seller rejected successfully']);
             exit;
+        } else {
+            header("Location: admin_users.php?msg=reject_success");
+            exit;
         }
     }
 }
@@ -352,8 +466,8 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
     $seller = $stmt->get_result()->fetch_assoc();
     
     if ($seller) {
-        $decryptedContact = decrypt_data($seller['contact_number']);
-        $decryptedTinId = decrypt_data($seller['tin_id']);
+        $decryptedContact = !empty($seller['contact_number']) ? decrypt_data($seller['contact_number']) : '';
+        $decryptedTinId = !empty($seller['tin_id']) ? decrypt_data($seller['tin_id']) : '';
         
         $hasCustomer = (int) $seller['has_customer'] > 0;
         
@@ -367,7 +481,7 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
         
         echo json_encode([
             'success' => true,
-            'full_name' => $seller['full_name'] ?? $seller['username'],
+            'full_name' => $seller['full_name'] ?? $seller['username'] ?? '',
             'email' => $seller['email'],
             'contact_number' => $decryptedContact,
             'age' => $seller['age'],
@@ -390,20 +504,21 @@ if (isset($_GET['get_seller_details']) && isset($_GET['id'])) {
     exit;
 }
 
-// Email helper functions
+// Email helper functions - FIXED VERSION
 function getDualRoleEmail($seller) {
     return "
         <html>
         <head>
             <style>
-                body { font-family: Arial, sans-serif; }
+                body { font-family: Arial, sans-serif; line-height: 1.6; }
                 .container { padding: 20px; background-color: #fdf2f6; }
-                .content { background-color: white; padding: 20px; border-radius: 10px; }
+                .content { background-color: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto; }
                 .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
                 .upgrade-badge { background-color: #10b981; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; font-size: 12px; margin-left: 10px; }
-                .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                .button { background-color: #610C27; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0; }
                 .feature-list { margin: 15px 0; padding-left: 20px; }
                 .feature-list li { margin: 8px 0; }
+                .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }
             </style>
         </head>
         <body>
@@ -428,10 +543,22 @@ function getDualRoleEmail($seller) {
                         <li>🛍️ <strong>Continue Shopping:</strong> Shop as a customer too</li>
                     </ul>
                     
-                    <p>You can now log in to your account and start selling!</p>
-                    <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
+                    <p><strong>How to Access Your Seller Features:</strong></p>
+                    <ol>
+                        <li>Log in to your account as usual using your existing credentials</li>
+                        <li>Look for the 'Switch Role' button in your dashboard</li>
+                        <li>Toggle to 'Seller Mode' to access your seller dashboard</li>
+                    </ol>
                     
-                    <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    <div style='text-align: center; margin: 25px 0;'>
+                        <a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>
+                            Login to Your Account
+                        </a>
+                    </div>
+                    
+                    <div class='footer'>
+                        <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    </div>
                 </div>
             </div>
         </body>
@@ -439,44 +566,102 @@ function getDualRoleEmail($seller) {
     ";
 }
 
-function getSellerOnlyEmail($seller) {
+function getSellerOnlyEmail($seller, $username, $tempPassword) {
     return "
         <html>
         <head>
             <style>
-                body { font-family: Arial, sans-serif; }
+                body { font-family: Arial, sans-serif; line-height: 1.6; }
                 .container { padding: 20px; background-color: #fdf2f6; }
-                .content { background-color: white; padding: 20px; border-radius: 10px; }
-                .header { color: #610C27; font-size: 24px; margin-bottom: 20px; }
+                .content { background-color: white; padding: 25px; border-radius: 10px; max-width: 600px; margin: 0 auto; }
+                .header { color: #610C27; font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #f9dbe5; padding-bottom: 10px; }
                 .seller-badge { background-color: #f59e0b; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; font-size: 12px; margin-left: 10px; }
-                .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                .button { background-color: #610C27; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; display: inline-block; margin: 15px 0; font-weight: bold; }
+                .credentials-box { background: #fef3c7; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #f59e0b; }
+                .credential-item { margin: 12px 0; padding: 8px; background: white; border-radius: 8px; }
+                .credential-label { font-weight: bold; color: #610C27; display: inline-block; width: 120px; }
+                .credential-value { font-family: 'Courier New', monospace; font-size: 16px; color: #333; font-weight: bold; }
+                .warning-box { background-color: #fee2e2; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #dc2626; }
+                .feature-list { margin: 15px 0; padding-left: 20px; }
+                .feature-list li { margin: 8px 0; }
+                code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 14px; }
+                .login-link { background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center; }
+                .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; text-align: center; }
             </style>
         </head>
         <body>
             <div class='container'>
                 <div class='content'>
                     <div class='header'>
-                        Seller Application Approved!
+                        🎉 Welcome to J3RS Marketplace!
                         <span class='seller-badge'>Seller Account</span>
                     </div>
-                    <p>Dear " . htmlspecialchars($seller['shop_name']) . ",</p>
-                    <p>Congratulations! Your seller application has been approved by our admin team.</p>
                     
-                    <div style='background:#dcfce7; padding:15px; border-radius:8px; margin:15px 0;'>
-                        <p style='margin:0;'><strong>✅ Your seller account has been successfully created!</strong></p>
+                    <p>Dear <strong>" . htmlspecialchars($seller['full_name'] ?? $seller['shop_name']) . "</strong>,</p>
+                    
+                    <p>Congratulations! Your seller application has been <strong>approved</strong> by our admin team. Your seller account has been successfully created.</p>
+                    
+                    <div class='credentials-box'>
+                        <h3 style='margin: 0 0 15px 0; color: #92400e;'>📋 Your Account Credentials</h3>
+                        
+                        <div class='credential-item'>
+                            <span class='credential-label'>👤 Username:</span>
+                            <span class='credential-value'><code>" . htmlspecialchars($username) . "</code></span>
+                        </div>
+                        
+                        <div class='credential-item'>
+                            <span class='credential-label'>📧 Email:</span>
+                            <span class='credential-value'>" . htmlspecialchars($seller['email']) . "</span>
+                        </div>
+                        
+                        <div class='credential-item'>
+                            <span class='credential-label'>🔐 Temporary Password:</span>
+                            <span class='credential-value'><code style='font-size: 18px; padding: 8px 12px; background: #fff; border-radius: 6px; display: inline-block;'>" . htmlspecialchars($tempPassword) . "</code></span>
+                        </div>
                     </div>
                     
-                    <p><strong>What You Can Do Now:</strong></p>
-                    <ul>
-                        <li>🏪 <strong>Manage Your Shop:</strong> Add and manage products</li>
-                        <li>📦 <strong>Process Orders:</strong> View and fulfill customer orders</li>
-                        <li>📊 <strong>Track Analytics:</strong> Monitor your sales performance</li>
+                    <div class='warning-box'>
+                        <strong>⚠️ Important Security Notice:</strong>
+                        <ul style='margin: 10px 0 0 20px;'>
+                            <li>This is a temporary password for first-time login only</li>
+                            <li>You will be required to <strong>change your password immediately</strong> after logging in</li>
+                            <li>Never share your password with anyone</li>
+                            <li>For security, please use a strong, unique password</li>
+                        </ul>
+                    </div>
+                    
+                    <div class='login-link'>
+                        <h3 style='margin: 0 0 10px 0;'>🔑 Click the button below to login:</h3>
+                        <a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>
+                            🚀 Login to Your Seller Account
+                        </a>
+                    </div>
+                    
+                    <h3>📝 How to Login:</h3>
+                    <ol>
+                        <li>Click the <strong>\"Login to Your Seller Account\"</strong> button above</li>
+                        <li>Enter your <strong>Username</strong>: <code>" . htmlspecialchars($username) . "</code></li>
+                        <li>Enter your <strong>Temporary Password</strong>: <code>" . htmlspecialchars($tempPassword) . "</code></li>
+                        <li>Click <strong>Sign in</strong></li>
+                        <li>You will be prompted to change your password on first login</li>
+                        <li>After changing your password, you can start selling!</li>
+                    </ol>
+                    
+                    <h3>✨ What You Can Do Now:</h3>
+                    <ul class='feature-list'>
+                        <li>🏪 <strong>Set Up Your Shop:</strong> Complete your shop profile and settings</li>
+                        <li>📦 <strong>Add Products:</strong> Start listing your products for sale</li>
+                        <li>📊 <strong>Dashboard Access:</strong> View your sales analytics and performance</li>
+                        <li>💬 <strong>Customer Management:</strong> Communicate with your customers</li>
+                        <li>🔐 <strong>Security:</strong> Change your password immediately after login</li>
                     </ul>
                     
-                    <p>You can now log in to your seller account and start selling!</p>
-                    <p><a href='http://localhost/INFO-ASSURANCE-GRP3/login.php' class='button'>Login to Your Account</a></p>
-                    
-                    <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    <div class='footer'>
+                        <p><strong>Need Help?</strong> If you have any issues logging in, please contact our support team at support@j3rs.com</p>
+                        <p>Best regards,<br>
+                        <strong>J3RS Marketplace Team</strong><br>
+                        <small>Your Trusted Online Marketplace</small></p>
+                    </div>
                 </div>
             </div>
         </body>
@@ -489,12 +674,13 @@ function getRejectionEmail($seller) {
         <html>
         <head>
             <style>
-                body { font-family: Arial, sans-serif; }
+                body { font-family: Arial, sans-serif; line-height: 1.6; }
                 .container { padding: 20px; background-color: #fdf2f6; }
-                .content { background-color: white; padding: 20px; border-radius: 10px; }
+                .content { background-color: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto; }
                 .header { color: #dc2626; font-size: 24px; margin-bottom: 20px; }
                 .message-box { background-color: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626; }
                 .button { background-color: #610C27; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+                .footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }
             </style>
         </head>
         <body>
@@ -509,7 +695,9 @@ function getRejectionEmail($seller) {
                     </div>
                     <p>If you have any questions, please contact our support team.</p>
                     <p><a href='http://localhost/INFO-ASSURANCE-GRP3/contact.php' class='button'>Contact Support</a></p>
-                    <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    <div class='footer'>
+                        <p>Best regards,<br><strong>J3RS Marketplace Team</strong></p>
+                    </div>
                 </div>
             </div>
         </body>
@@ -518,7 +706,7 @@ function getRejectionEmail($seller) {
 }
 
 /* =========================
-   FETCH DATA - FIXED PENDING SELLERS QUERY
+   FETCH DATA
 ========================= */
 // Count total users
 $countUsersStmt = $conn->query("SELECT COUNT(*) as total FROM user");
@@ -541,9 +729,9 @@ if (!$usersStmt) {
 }
 $users = $usersStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Fetch Pending Sellers - FIXED: Added error checking and proper JOIN
+// Fetch Pending Sellers
 $pendingQuery = "
-    SELECT s.*, u.username, u.email, u.role_id,
+    SELECT s.*, u.username, u.email, u.role_id, u.first_name, u.last_name,
            (SELECT COUNT(*) FROM customer WHERE user_id = u.user_id) as has_customer
     FROM seller s
     JOIN user u ON s.user_id = u.user_id
@@ -554,17 +742,10 @@ $pendingQuery = "
 $pendingStmt = $conn->query($pendingQuery);
 
 if (!$pendingStmt) {
-    // If query fails, show error for debugging
     die("Error fetching pending sellers: " . $conn->error);
 }
 
 $pendingSellers = $pendingStmt->fetch_all(MYSQLI_ASSOC);
-
-// Debug: Check if there are any pending sellers
-if (empty($pendingSellers)) {
-    // You can uncomment this line to debug
-    // error_log("No pending sellers found. Check if seller table has records with is_approved = 0");
-}
 
 // Fetch Roles for filter
 $rolesStmt = $conn->query("SELECT role_name FROM role");
@@ -668,7 +849,6 @@ th {
 .warning { background: #fef3c7; color: #92400e; }
 .danger { background: #fee2e2; color: #991b1b; }
 
-/* Pagination styles */
 .pagination {
   display: flex;
   justify-content: center;
@@ -988,7 +1168,7 @@ function toggleSidebar() {
   <td class="search-data">
     <strong><?php echo htmlspecialchars($u['username']); ?></strong><br>
     <small><?php echo htmlspecialchars($u['email']); ?></small>
-  </td>
+   </td>
   <td><?php echo htmlspecialchars($u['role_name']); ?></td>
   <td>
     <?php if ($u['is_locked']): ?>
@@ -1078,7 +1258,7 @@ function toggleSidebar() {
 
 </div>
 
-<!-- Modals (same as before) -->
+<!-- Modals (same as before - keeping them for functionality) -->
 <div id="confirmModal" class="modal confirm-modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -1436,6 +1616,10 @@ window.onload = function() {
         showSuccessPopup('Please fill all fields.', 'error');
     } else if (msg === 'success') {
         showSuccessPopup('Action completed successfully!');
+    } else if (msg === 'approve_success') {
+        showSuccessPopup('Seller approved successfully! Email has been sent.');
+    } else if (msg === 'reject_success') {
+        showSuccessPopup('Seller rejected successfully!');
     }
 }
 </script>

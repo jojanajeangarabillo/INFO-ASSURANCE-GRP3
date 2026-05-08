@@ -9,7 +9,7 @@ $user_id = $_SESSION['user_id'];
 
 // Fetch driver info
 $driverQuery = $conn->prepare("
-    SELECT d.*, u.first_name, u.last_name, u.email, u.user_id as user_account_id
+    SELECT d.*, u.first_name, u.last_name, u.email, u.user_id as user_account_id, u.password
     FROM driver d 
     JOIN user u ON d.user_id = u.user_id 
     WHERE d.user_id = ?
@@ -34,6 +34,56 @@ function sendNotification($conn, $user_id, $title, $message, $notification_type,
     ");
     $insert_notif->bind_param("issii", $user_id, $title, $message, $notification_type, $reference_id);
     return $insert_notif->execute();
+}
+
+// Handle password change
+$password_message = '';
+$password_message_type = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
+    $current_password = $_POST['current_password'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
+    
+    // Validate inputs
+    if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+        $password_message = 'All password fields are required.';
+        $password_message_type = 'danger';
+    } elseif ($new_password !== $confirm_password) {
+        $password_message = 'New password and confirmation do not match.';
+        $password_message_type = 'danger';
+    } elseif (strlen($new_password) < 6) {
+        $password_message = 'New password must be at least 6 characters long.';
+        $password_message_type = 'danger';
+    } else {
+        // Verify current password
+        if (password_verify($current_password, $driver['password'])) {
+            // Hash new password
+            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+            
+            // Update password in database
+            $updateStmt = $conn->prepare("UPDATE user SET password = ? WHERE user_id = ?");
+            $updateStmt->bind_param("si", $hashed_password, $driver_user_id);
+            
+            if ($updateStmt->execute()) {
+                $password_message = 'Password changed successfully!';
+                $password_message_type = 'success';
+                
+                // Send notification about password change
+                sendNotification($conn, $driver_user_id, 'Password Changed', 'Your password has been successfully changed. If you did not make this change, please contact support immediately.', 'security', null);
+                
+                // Update the driver array with new password hash for session consistency
+                $driver['password'] = $hashed_password;
+            } else {
+                $password_message = 'Failed to change password. Please try again.';
+                $password_message_type = 'danger';
+            }
+            $updateStmt->close();
+        } else {
+            $password_message = 'Current password is incorrect.';
+            $password_message_type = 'danger';
+        }
+    }
 }
 
 // Fetch unread notifications for driver
@@ -411,6 +461,10 @@ body { background: #fdf2f6; font-family: 'Inter', Arial, sans-serif; }
     border-radius: 8px;
     font-weight: 500;
 }
+.btn-outline-action:hover {
+    background: #610C27;
+    color: white;
+}
 
 .container-custom { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
 .tracking-timeline {
@@ -496,6 +550,27 @@ body { background: #fdf2f6; font-family: 'Inter', Arial, sans-serif; }
     color: #0d6efd;
     text-decoration: none;
 }
+
+/* Driver Profile Styles */
+.driver-profile-card {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+.change-password-btn {
+    background: none;
+    border: 1px solid #610C27;
+    color: #610C27;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+.change-password-btn:hover {
+    background: #610C27;
+    color: white;
+}
 </style>
 </head>
 <body>
@@ -508,6 +583,10 @@ body { background: #fdf2f6; font-family: 'Inter', Arial, sans-serif; }
                 <p class="mb-0 opacity-75">Driver ID: <?php echo $driver['driver_id']; ?> | Vehicle: <?php echo htmlspecialchars($driver['vehicle_assigned'] ?: 'Not assigned'); ?></p>
             </div>
             <div class="d-flex align-items-center">
+                <!-- Change Password Button -->
+                <button type="button" class="btn btn-light me-2" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+                    <i class="fas fa-key"></i> Change Password
+                </button>
                 <!-- Notification Bell -->
                 <div class="notification-bell" onclick="toggleNotifications()">
                     <i class="fas fa-bell fs-4"></i>
@@ -563,6 +642,15 @@ body { background: #fdf2f6; font-family: 'Inter', Arial, sans-serif; }
 </div>
 
 <div class="container-custom pb-5">
+    <!-- Password Change Message -->
+    <?php if ($password_message): ?>
+        <div class="alert alert-<?php echo $password_message_type; ?> alert-dismissible fade show mb-4" role="alert">
+            <i class="fas <?php echo $password_message_type == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
+            <?php echo $password_message; ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Stats Row -->
     <div class="row g-4 mb-4">
         <div class="col-md-3 col-6">
@@ -717,10 +805,65 @@ body { background: #fdf2f6; font-family: 'Inter', Arial, sans-serif; }
                     </tr>
                     <?php endwhile; ?>
                 </tbody>
-            </table>
+             </table>
         </div>
     </div>
     <?php endif; ?>
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background: #610C27; color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-key me-2"></i>Change Password
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="changePasswordForm" onsubmit="return validatePasswordForm()">
+                <div class="modal-body">
+                    <input type="hidden" name="action" value="change_password">
+                    
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label fw-bold">
+                            <i class="fas fa-lock me-1"></i>Current Password
+                        </label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label fw-bold">
+                            <i class="fas fa-lock me-1"></i>New Password
+                        </label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        <div class="form-text" id="passwordStrength"></div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label fw-bold">
+                            <i class="fas fa-check-circle me-1"></i>Confirm New Password
+                        </label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        <div class="form-text text-muted" id="passwordMatchMsg"></div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <i class="fas fa-info-circle"></i> 
+                        Password requirements:
+                        <ul class="mb-0 mt-1">
+                            <li>Minimum 6 characters</li>
+                            <li>Use a mix of letters, numbers, and special characters for better security</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn-action">Change Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- Complete Delivery Modal -->
@@ -790,6 +933,90 @@ document.addEventListener('click', function(event) {
         dropdown.classList.remove('show');
     }
 });
+
+// Password validation and strength checker
+function validatePasswordForm() {
+    const newPassword = document.getElementById('new_password').value;
+    const confirmPassword = document.getElementById('confirm_password').value;
+    
+    if (newPassword.length < 6) {
+        alert('Password must be at least 6 characters long.');
+        return false;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        alert('New password and confirmation do not match.');
+        return false;
+    }
+    
+    return true;
+}
+
+// Real-time password strength checker
+document.getElementById('new_password')?.addEventListener('input', function() {
+    const password = this.value;
+    const strengthDiv = document.getElementById('passwordStrength');
+    
+    if (password.length === 0) {
+        strengthDiv.innerHTML = '';
+        strengthDiv.className = 'form-text';
+        return;
+    }
+    
+    let strength = '';
+    let strengthClass = '';
+    
+    if (password.length < 6) {
+        strength = 'Weak - Password must be at least 6 characters';
+        strengthClass = 'text-danger';
+    } else if (password.length >= 6 && password.length < 8) {
+        strength = 'Fair - Consider making it longer';
+        strengthClass = 'text-warning';
+    } else if (password.length >= 8 && /[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        strength = 'Strong - Good password!';
+        strengthClass = 'text-success';
+    } else if (password.length >= 8) {
+        strength = 'Good - Add special characters for extra security';
+        strengthClass = 'text-info';
+    } else {
+        strength = 'Password strength';
+        strengthClass = 'text-muted';
+    }
+    
+    strengthDiv.innerHTML = strength;
+    strengthDiv.className = `form-text ${strengthClass}`;
+});
+
+// Real-time password match checker
+document.getElementById('confirm_password')?.addEventListener('input', function() {
+    const newPassword = document.getElementById('new_password').value;
+    const confirmPassword = this.value;
+    const matchMsg = document.getElementById('passwordMatchMsg');
+    
+    if (confirmPassword.length === 0) {
+        matchMsg.innerHTML = '';
+        return;
+    }
+    
+    if (newPassword === confirmPassword) {
+        matchMsg.innerHTML = '<i class="fas fa-check-circle text-success"></i> Passwords match!';
+        matchMsg.className = 'form-text text-success';
+    } else {
+        matchMsg.innerHTML = '<i class="fas fa-times-circle text-danger"></i> Passwords do not match';
+        matchMsg.className = 'form-text text-danger';
+    }
+});
+
+// Auto-hide alerts after 5 seconds
+setTimeout(function() {
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        if (!alert.classList.contains('alert-info')) {
+            const bsAlert = new bootstrap.Alert(alert);
+            setTimeout(() => bsAlert.close(), 3000);
+        }
+    });
+}, 5000);
 </script>
 </body>
 </html>

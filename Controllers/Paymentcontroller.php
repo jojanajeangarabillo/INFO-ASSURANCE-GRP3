@@ -37,8 +37,9 @@ class PaymentController {
                     'description' => $description,
                     'line_items' => $line_items,
                     'payment_method_types' => ['gcash', 'paymaya', 'grab_pay', 'card'],
-                    'success_url' => (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/payment_success.php',
-                    'cancel_url' => (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . '/INFO-ASSURANCE-GRP3/customer_cart.php'
+                    'success_url' => 'http://localhost/INFO-ASSURANCE-GRP3/payment_success.php',
+
+                    'cancel_url' => 'http://localhost/INFO-ASSURANCE-GRP3/customer_cart.php'
                 ]
             ]
         ];
